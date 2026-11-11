@@ -1,4 +1,4 @@
-import type { Backup, Conversation, Message } from './db'
+import { makeBackup, type Backup, type Conversation, type Message } from './db'
 
 export function toMarkdown(conv: Conversation, messages: Message[]): string {
   const out: string[] = [
@@ -25,8 +25,10 @@ export function toMarkdown(conv: Conversation, messages: Message[]): string {
   return out.join('\n')
 }
 
+// Same envelope as a full backup, with one conversation in it. That is what
+// makes a single chat restorable through the same import path.
 export function toJson(conv: Conversation, messages: Message[]): string {
-  return JSON.stringify({ conversation: conv, messages }, null, 2)
+  return JSON.stringify(makeBackup([conv], messages), null, 2)
 }
 
 export function slug(title: string): string {

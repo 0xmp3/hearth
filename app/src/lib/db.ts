@@ -151,6 +151,16 @@ export type Backup = {
   messages: Message[]
 }
 
+export function makeBackup(conversations: Conversation[], messages: Message[]): Backup {
+  return {
+    format: 'hearth-backup',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    conversations,
+    messages,
+  }
+}
+
 export async function exportAll(): Promise<Backup> {
   const db = await open()
   const read = <T,>(store: string) =>
@@ -166,13 +176,7 @@ export async function exportAll(): Promise<Backup> {
     read<Message>('messages'),
   ])
 
-  return {
-    format: 'hearth-backup',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    conversations,
-    messages,
-  }
+  return makeBackup(conversations, messages)
 }
 
 // Merge, never replace: restoring into an empty database brings everything

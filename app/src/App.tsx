@@ -77,10 +77,12 @@ export default function App() {
     download(`${slug(conv.title)}.json`, toJson(conv, h.messages), 'application/json')
   }
 
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
   async function backupAll() {
     const backup = await exportAll()
     download(backupFilename(), JSON.stringify(backup, null, 2), 'application/json')
-    setNotice(`Backed up ${backup.conversations.length} conversations, ${backup.messages.length} messages.`)
+    setNotice(`Backed up ${plural(backup.conversations.length, 'conversation')}, ${plural(backup.messages.length, 'message')}.`)
   }
 
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -91,7 +93,7 @@ export default function App() {
       const backup = parseBackup(await file.text())
       const result = await importAll(backup)
       await h.reload()
-      setNotice(`Restored ${result.conversations} conversations, ${result.messages} messages.`)
+      setNotice(`Restored ${plural(result.conversations, 'conversation')}, ${plural(result.messages, 'message')}.`)
     } catch (err) {
       setNotice(`Import failed: ${(err as Error).message}`)
     }
@@ -99,10 +101,14 @@ export default function App() {
 
   const actions: PaletteAction[] = [
     { id: 'new', label: 'New conversation', run: () => void h.create() },
-    { id: 'export-md', label: 'Export conversation as Markdown', run: exportMarkdown },
-    { id: 'export-json', label: 'Export conversation as JSON', run: exportJson },
+    ...(h.activeConversation
+      ? [
+          { id: 'export-md', label: 'Export this conversation as Markdown', run: exportMarkdown },
+          { id: 'export-json', label: 'Export this conversation as JSON', hint: 'restorable', run: exportJson },
+        ]
+      : []),
     { id: 'backup', label: 'Back up all conversations', hint: 'json', run: () => void backupAll() },
-    { id: 'restore', label: 'Restore from backup…', hint: 'json', run: () => fileRef.current?.click() },
+    { id: 'restore', label: 'Restore from file…', hint: 'backup or single chat', run: () => fileRef.current?.click() },
     { id: 'system', label: 'Toggle system prompt', run: () => setShowSystem((v) => !v) },
     ...(h.streaming ? [{ id: 'stop', label: 'Stop generating', run: h.stop }] : []),
   ]
