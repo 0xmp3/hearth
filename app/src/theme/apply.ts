@@ -21,6 +21,10 @@ export function applyTheme(theme: Theme): void {
   for (const [key, value] of Object.entries(theme.fonts ?? {})) {
     if (value) root.style.setProperty('--font-' + key, value)
   }
+
+  for (const [key, value] of Object.entries(theme.chromeVars ?? {})) {
+    root.style.setProperty('--' + key, value)
+  }
 }
 
 export function loadTheme(): Theme {

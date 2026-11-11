@@ -4,6 +4,8 @@
    gradient and the desktop backdrop are defined locally, because a bevel is
    not a colour. */
 
+/* Bevel and gradient colours come from the theme's chromeVars, so the same
+   chrome can be light or dark. The fallbacks are the light variant. */
 [data-chrome='win95'] {
   --bevel-hi: #ffffff;
   --bevel-lo: #6b6580;
@@ -106,6 +108,18 @@
 
 [data-chrome='win95'] .conv.active .conv-title {
   color: var(--on-accent);
+}
+
+/* The delete button sits on the pink selection bar; a bevel there reads as
+   a stray box, so it goes flat until hovered. */
+[data-chrome='win95'] .conv.active button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+[data-chrome='win95'] .conv.active button.ghost:hover {
+  border-color: var(--on-accent);
 }
 
 [data-chrome='win95'] .sidebar-foot {

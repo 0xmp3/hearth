@@ -42,4 +42,10 @@ export type Theme = {
   chrome?: 'flat' | 'win95'
   colors: ThemeColors
   fonts?: ThemeFonts
+  /**
+   * Extra CSS custom properties for the chrome layer (bevels, title bar
+   * gradient, desktop backdrop). Keys are written as `--key`. This is what
+   * lets one chrome have a light and a dark variant.
+   */
+  chromeVars?: Record<string, string>
 }

@@ -110,8 +110,59 @@ const win95: Theme = {
     mono: '"Lucida Console", "Cascadia Mono", Consolas, monospace',
     display: 'Tahoma, "MS Sans Serif", sans-serif',
   },
+  chromeVars: {
+    'bevel-hi': '#ffffff',
+    'bevel-lo': '#6b6580',
+    'bevel-edge': '#3d3850',
+    'title-a': '#2a0845',
+    'title-b': '#ff2e88',
+    'desktop-a': '#2a0845',
+    'desktop-b': '#12071f',
+  },
 }
 
-export const themes: Record<string, Theme> = { hearth, parchment, slate, win95 }
+// The same window after dark. Bevels invert: the highlight is a lighter grey
+// and the shadow goes near-black, which is the whole trick to a dark bevel.
+const win95dark: Theme = {
+  id: 'win95dark',
+  name: 'Hearth 98 Dark',
+  scheme: 'dark',
+  chrome: 'win95',
+  colors: {
+    bg: '#2a2636',
+    field: '#1a1722',
+    desktop: '#0a0710',
+    panel: '#2a2636',
+    raised: '#35303f',
+    text: '#e8e4f0',
+    muted: '#a09ab0',
+    faint: '#6b6580',
+    accent: '#ff2e88',
+    onAccent: '#ffffff',
+    border: '#4a4460',
+    danger: '#ff6b6b',
+    syntaxKeyword: '#7fb3e0',
+    syntaxString: '#8fbf8f',
+    syntaxNumber: '#d8b46a',
+    syntaxTitle: '#c9a0ff',
+    syntaxComment: '#6b6580',
+  },
+  fonts: {
+    sans: 'Tahoma, "MS Sans Serif", "Segoe UI", sans-serif',
+    mono: '"Lucida Console", "Cascadia Mono", Consolas, monospace',
+    display: 'Tahoma, "MS Sans Serif", sans-serif',
+  },
+  chromeVars: {
+    'bevel-hi': '#5f5878',
+    'bevel-lo': '#050409',
+    'bevel-edge': '#000000',
+    'title-a': '#0d0518',
+    'title-b': '#01cdfe',
+    'desktop-a': '#0a0710',
+    'desktop-b': '#1a0b2e',
+  },
+}
+
+export const themes: Record<string, Theme> = { hearth, parchment, slate, win95, win95dark }
 
 export const DEFAULT_THEME = 'hearth'

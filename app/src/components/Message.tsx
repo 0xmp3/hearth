@@ -66,6 +66,15 @@ function MessageView({ message, streaming, isLast, isLastUser, onRegenerate, onE
 
       {!editing && (
         <div className="msg-actions">
+          {/* Footnotes first: the action buttons are invisible until hover but
+              still occupy space, which pushed the stats into the middle. */}
+          {message.aborted && <span className="footnote">stopped</span>}
+          {message.stats?.tokPerSec && (
+            <span className="footnote">
+              {message.stats.tokPerSec.toFixed(1)} tok/s
+              {message.stats.completionTokens ? ` · ${message.stats.completionTokens} tokens` : ''}
+            </span>
+          )}
           {message.content && (
             <button className="link" onClick={() => void navigator.clipboard.writeText(message.content)}>
               copy
@@ -76,13 +85,6 @@ function MessageView({ message, streaming, isLast, isLastUser, onRegenerate, onE
           )}
           {!isUser && isLast && !streaming && (
             <button className="link" onClick={onRegenerate}>regenerate</button>
-          )}
-          {message.aborted && <span className="footnote">stopped</span>}
-          {message.stats?.tokPerSec && (
-            <span className="footnote">
-              {message.stats.tokPerSec.toFixed(1)} tok/s
-              {message.stats.completionTokens ? ` · ${message.stats.completionTokens} tokens` : ''}
-            </span>
           )}
         </div>
       )}
