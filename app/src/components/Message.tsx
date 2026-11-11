@@ -35,7 +35,7 @@ function MessageView({
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
-  const empty = !message.content && !message.reasoning
+  const empty = !message.content && !message.reasoning && !message.attachments?.length
   const isUser = message.role === 'user'
 
   function startEdit() {
@@ -81,12 +81,31 @@ function MessageView({
           </div>
         ) : (
           <div className="body">
+            {message.attachments?.length ? (
+              <ul className="msg-attachments">
+                {message.attachments.map((a) => (
+                  <li key={a.id} className={`msg-attachment ${a.kind}`}>
+                    {a.kind === 'image' && a.url ? (
+                      <img src={a.url} alt={a.name} className="msg-image" />
+                    ) : (
+                      <>
+                        <span className="attach-icon">▤</span>
+                        <span className="attach-name">{a.name}</span>
+                        {a.truncated && <span className="footnote warn">truncated</span>}
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {isUser ? (
               message.content
             ) : message.content ? (
               <Markdown text={message.content} />
             ) : empty && streaming ? (
               <span className="dots">…</span>
+            ) : empty && !isUser ? (
+              <span className="footnote">no reply</span>
             ) : null}
           </div>
         )}

@@ -579,6 +579,83 @@ button, select, textarea { font: inherit; color: inherit; }
 .composer textarea:focus { border-color: var(--accent); }
 .composer textarea::placeholder { color: var(--faint); }
 
+.hint.warn { color: var(--warn, #d9a441); }
+
+.composer.dragging {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+
+.attach-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.attach-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 3px 6px 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.attach-thumb {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+
+.attach-icon { flex: none; opacity: 0.7; }
+
+.attach-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-size { flex: none; opacity: 0.6; font-variant-numeric: tabular-nums; }
+
+.attach-btn { flex: none; }
+
+.msg-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.msg-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.msg-attachment.image { padding: 0; border: 0; }
+
+.msg-image {
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: 8px;
+  display: block;
+}
+
 .composer-row {
   display: flex;
   align-items: center;

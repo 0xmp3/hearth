@@ -7,7 +7,8 @@ import { listModels, type ModelInfo } from '../lib/models'
 import { chatTurn, type TurnDriver } from '../lib/turn'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
-import type { ChatMessage, Stats } from '../lib/stream'
+import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
+import { toDataUrl, type Attachment } from '../lib/attachments'
 
 export function useHearth(
   turn: TurnDriver = chatTurn,
@@ -71,7 +72,32 @@ export function useHearth(
   }, [])
 
   // ---- helpers ----------------------------------------------------------
-  function buildHistory(msgs: db.Message[], conv: db.Conversation): ChatMessage[] {
+  // A message with attachments becomes content parts: text files are inlined
+  // into the prompt, images are read back into data URLs. Everything else is
+  // the plain string it always was.
+  async function toChatMessage(m: db.Message): Promise<ChatMessage> {
+    const atts = m.attachments ?? []
+    if (!atts.length) return { role: m.role, content: m.content }
+
+    let text = m.content
+    for (const a of atts) {
+      if (a.kind === 'text' && a.text) {
+        const note = a.truncated ? ' (truncated)' : ''
+        text += `\n\n<file name="${a.name}"${note}>\n${a.text}\n</file>`
+      }
+    }
+
+    const images = atts.filter((a) => a.kind === 'image' && a.url)
+    if (!images.length) return { role: m.role, content: text }
+
+    const parts: ContentPart[] = [{ type: 'text', text }]
+    for (const a of images) {
+      parts.push({ type: 'image_url', image_url: { url: await toDataUrl(a.url!) } })
+    }
+    return { role: m.role, content: parts }
+  }
+
+  async function buildHistory(msgs: db.Message[], conv: db.Conversation): Promise<ChatMessage[]> {
     // Persona first (who you are), then the conversation's own prompt (what
     // this chat is about). Either can be empty.
     const persona = resolvePersona?.(conv.personaId)?.systemPrompt?.trim()
@@ -83,9 +109,11 @@ export function useHearth(
       // An assistant turn that produced no text (thinking ate the budget, or
       // the user stopped it before the first token) is noise to the model and
       // makes it reason about "the empty response" instead of the question.
-      ...msgs
-        .filter((m) => m.content.trim().length > 0)
-        .map((m) => ({ role: m.role, content: m.content })),
+      ...(await Promise.all(
+        msgs
+          .filter((m) => m.content.trim().length > 0 || (m.attachments?.length ?? 0) > 0)
+          .map(toChatMessage),
+      )),
     ]
   }
 
@@ -233,9 +261,10 @@ export function useHearth(
     setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
   }
 
-  async function send(text: string) {
+  async function send(text: string, attachments: Attachment[] = []) {
     const trimmed = text.trim()
-    if (!trimmed || streaming) return
+    // A file on its own is a valid message; the text is optional.
+    if ((!trimmed && !attachments.length) || streaming) return
 
     setError(null)
     setStats(null)
@@ -244,7 +273,7 @@ export function useHearth(
     if (!conv) {
       conv = {
         id: db.newId(),
-        title: db.titleFrom(trimmed),
+        title: db.titleFrom(trimmed || attachments[0]?.name || 'Attachment'),
         createdAt: Date.now(),
         updatedAt: Date.now(),
         model,
@@ -265,6 +294,7 @@ export function useHearth(
       role: 'user',
       content: trimmed,
       createdAt: now,
+      ...(attachments.length ? { attachments } : {}),
     }
     const assistantMsg: db.Message = {
       id: db.newId(),
@@ -280,7 +310,7 @@ export function useHearth(
     await db.putMessage(userMsg)
     await db.putMessage(assistantMsg)
 
-    await runTurn(conv, buildHistory(next, conv), assistantMsg)
+    await runTurn(conv, await buildHistory(next, conv), assistantMsg)
   }
 
   // Throw away the last reply and ask again with the same history.
@@ -308,7 +338,7 @@ export function useHearth(
     setStats(null)
     setError(null)
 
-    await runTurn(conv, buildHistory(kept, conv), assistantMsg)
+    await runTurn(conv, await buildHistory(kept, conv), assistantMsg)
   }
 
   // Rewrite the last user message and drop everything after it.
@@ -341,7 +371,7 @@ export function useHearth(
     setStats(null)
     setError(null)
 
-    await runTurn(conv, buildHistory(kept, conv), assistantMsg)
+    await runTurn(conv, await buildHistory(kept, conv), assistantMsg)
   }
 
   async function togglePin(id: string) {
@@ -368,8 +398,17 @@ export function useHearth(
     if (!first || !reply.trim()) return
     if (history.filter((m) => m.role === 'user').length !== 1) return
 
+    // A message with images carries content parts; the title only needs the text.
+    const firstText =
+      typeof first.content === 'string'
+        ? first.content
+        : first.content
+            .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+            .map((p) => p.text)
+            .join('\n')
+
     try {
-      const title = await suggestTitle(BASE_URL, conv.model || model, first.content, reply)
+      const title = await suggestTitle(BASE_URL, conv.model || model, firstText, reply)
       if (!title) return
       const updated = { ...conv, title, updatedAt: Date.now() }
       await db.putConversation(updated)

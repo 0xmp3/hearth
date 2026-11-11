@@ -1,4 +1,4 @@
-import { toAvatarDataUrl } from './image'
+import { toAvatarDataUrl, toResizedDataUrl } from './image'
 
 const MANAGER = 'http://127.0.0.1:8090'
 
@@ -17,7 +17,9 @@ export async function uploadImage(
   file: File,
   kind: 'avatar' | 'attachment' = 'avatar',
 ): Promise<UploadResult> {
-  const dataUrl = await toAvatarDataUrl(file, kind === 'avatar' ? 128 : 1024)
+  // Avatars are square by design; attachments keep their shape.
+  const dataUrl =
+    kind === 'avatar' ? await toAvatarDataUrl(file, 128) : await toResizedDataUrl(file, 1024)
   const blob = await (await fetch(dataUrl)).blob()
 
   try {

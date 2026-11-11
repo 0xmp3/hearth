@@ -18,6 +18,8 @@ export type Conversation = {
   personaId?: string | null
 }
 
+import type { Attachment } from './attachments'
+
 export type Message = {
   id: string
   conversationId: string
@@ -30,6 +32,8 @@ export type Message = {
   personaId?: string | null
   /** The budget ran out before any answer was produced. */
   truncated?: boolean
+  /** Files sent with this message. Text is inlined; images go as content parts. */
+  attachments?: Attachment[]
   stats?: {
     tokPerSec?: number
     promptTokPerSec?: number

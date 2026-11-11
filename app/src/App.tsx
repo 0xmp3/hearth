@@ -303,6 +303,7 @@ export default function App() {
           )}
 
           <Composer
+            model={h.model}
             streaming={h.streaming}
             used={ctxUsed}
             total={ctxTotal}
