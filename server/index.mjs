@@ -17,12 +17,22 @@ import { randomBytes } from 'node:crypto'
 import { dirname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { detect } from './engine/detect.mjs'
+import { pickSource } from './engine/catalog.mjs'
+import { install, progress, isInstalled } from './engine/install.mjs'
+import {
+  BIN,
+  engineDir,
+  readConfig,
+  resolveEngine,
+  resolveModelsDir,
+  writeConfig,
+} from './engine/resolve.mjs'
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DATA = join(HERE, '..', 'data')
 
 const PORT = Number(process.env.HEARTH_MANAGER_PORT ?? 8090)
-const LLAMA = process.env.HEARTH_LLAMA ?? 'C:/AI/Llama Rocm/llama-server.exe'
-const DEFAULT_MODELS_DIR = process.env.HEARTH_MODELS ?? 'C:/AI/Models/served'
 const LLAMA_PORT = Number(process.env.HEARTH_LLAMA_PORT ?? 8088)
 
 const ALLOWED_ORIGINS = new Set(['http://localhost:5173', 'http://127.0.0.1:5173'])
@@ -39,6 +49,7 @@ let child = null
 let startedAt = null
 let lastArgs = null
 let lastError = null
+let installing = false
 const log = []
 
 function push(line) {
@@ -70,27 +81,42 @@ function stop() {
   return true
 }
 
-function start({ ctx, modelsDir, ngl }) {
+function start({ ctx, ngl }) {
   if (child) throw new Error('already running — stop it first')
-  if (!existsSync(LLAMA)) throw new Error(`llama-server not found at ${LLAMA}`)
 
-  const dir = modelsDir || DEFAULT_MODELS_DIR
-  if (!existsSync(dir)) throw new Error(`models folder not found: ${dir}`)
+  const engine = resolveEngine(DATA)
+  if (!engine.path) {
+    throw new Error('no engine — download one, or set a path in Settings')
+  }
+  if (!engine.exists) {
+    throw new Error(`engine not found at ${engine.path}`)
+  }
 
+  const models = resolveModelsDir(DATA)
+  if (!models.path) {
+    throw new Error('no models folder — set one in Settings')
+  }
+  if (!models.exists) {
+    throw new Error(`models folder not found: ${models.path}`)
+  }
+
+  const cfg = readConfig(DATA)
   const args = [
-    '--models-dir', dir,
+    '--models-dir', models.path,
     '--models-max', '1',
     '--port', String(LLAMA_PORT),
-    '-c', String(ctx ?? 8192),
-    '-ngl', String(ngl ?? 99),
+    '-c', String(ctx ?? cfg.ctx ?? 16384),
+    '-ngl', String(ngl ?? cfg.ngl ?? 99),
     '--jinja',
   ]
 
   lastError = null
   lastArgs = args
-  push(`[manager] ${LLAMA} ${args.join(' ')}`)
+  push(`[manager] ${engine.path} ${args.join(' ')}`)
 
-  child = spawn(LLAMA, args, { cwd: 'C:/AI/Llama Rocm', windowsHide: true })
+  // cwd is the engine's own folder: the build's DLLs sit next to the binary and
+  // Windows resolves them relative to the working directory.
+  child = spawn(engine.path, args, { cwd: dirname(engine.path), windowsHide: true })
   startedAt = Date.now()
 
   child.stdout.on('data', (d) => push(d.toString()))
@@ -195,6 +221,29 @@ async function handleFile(res, url) {
   }
 }
 
+/** Everything the UI needs to explain the current setup. */
+async function engineStatus() {
+  const detected = await detect()
+  const source = pickSource(detected)
+  const engine = resolveEngine(DATA)
+  const models = resolveModelsDir(DATA)
+  const cfg = readConfig(DATA)
+
+  return {
+    detected,
+    source,
+    engine,
+    models,
+    config: cfg,
+    managed: {
+      dir: engineDir(DATA),
+      installed: await isInstalled(engineDir(DATA), BIN),
+    },
+    progress,
+    installing,
+  }
+}
+
 const server = createServer((req, res) => {
   cors(req, res)
 
@@ -225,6 +274,54 @@ const server = createServer((req, res) => {
     return
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/engine') {
+    engineStatus()
+      .then((s) => json(res, 200, s))
+      .catch((err) => json(res, 500, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/engine/progress') {
+    json(res, 200, { progress, installing })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/engine/download') {
+    if (installing) return json(res, 409, { error: 'already downloading' })
+
+    detect()
+      .then((detected) => {
+        const source = pickSource(detected)
+        if (!source) throw new Error('no build available for this machine')
+
+        installing = true
+        // Fire and forget: the UI polls /api/engine/progress.
+        install(source, engineDir(DATA))
+          .catch((err) => push(`[manager] install failed: ${err.message}`))
+          .finally(() => {
+            installing = false
+          })
+
+        json(res, 202, { started: true, source })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/config') {
+    readBody(req, 1e5)
+      .then((buf) => {
+        const patch = buf.length ? JSON.parse(buf.toString()) : {}
+        const allowed = ['enginePath', 'modelsDir', 'ctx', 'ngl']
+        const clean = Object.fromEntries(
+          Object.entries(patch).filter(([k]) => allowed.includes(k)),
+        )
+        json(res, 200, writeConfig(DATA, clean))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/start') {
     readBody(req, 1e5)
       .then((buf) => {
@@ -250,11 +347,13 @@ const server = createServer((req, res) => {
 })
 
 server.listen(PORT, '127.0.0.1', () => {
+  const engine = resolveEngine(DATA)
+  const models = resolveModelsDir(DATA)
   console.log(`hearth manager on http://127.0.0.1:${PORT}`)
-  console.log(`  llama-server: ${LLAMA}`)
-  console.log(`  models:       ${DEFAULT_MODELS_DIR}`)
-  console.log(`  data:         ${DATA}`)
-  console.log(`  serving on:   ${LLAMA_PORT}`)
+  console.log(`  engine:  ${engine.path ?? '(none — download one in Settings)'}  [${engine.source}]`)
+  console.log(`  models:  ${models.path ?? '(none — set one in Settings)'}  [${models.source}]`)
+  console.log(`  data:    ${DATA}`)
+  console.log(`  serving: ${LLAMA_PORT}`)
 })
 
 for (const sig of ['SIGINT', 'SIGTERM']) {

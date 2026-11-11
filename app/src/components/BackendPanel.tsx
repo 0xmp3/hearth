@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ctxFromArgs, manager, type ManagerStatus } from '../lib/backend'
 import { formatTokens } from '../lib/budget'
+import EnginePanel from './EnginePanel'
 
 // Optional process control. If the manager is not running, this says so and
 // nothing else in the app changes — the app still talks to whatever server is
@@ -26,7 +27,20 @@ export default function BackendPanel({ onServerChanged }: { onServerChanged?: ()
   }
 
   useEffect(() => {
-    void refresh()
+    // Seed the context field from saved config so the first start uses the value
+    // the user last chose, not a hardcoded default. A running server wins.
+    void (async () => {
+      const s = await manager.status().catch(() => null)
+      if (s) {
+        setStatus(s)
+        setUnreachable(false)
+        const running = ctxFromArgs(s.args)
+        if (running) setCtx(running)
+      }
+      const e = await manager.engine().catch(() => null)
+      if (e && !s?.running) setCtx(e.config.ctx)
+    })()
+
     const t = window.setInterval(() => void refresh(), 3000)
     return () => clearInterval(t)
   }, [])
@@ -60,6 +74,8 @@ export default function BackendPanel({ onServerChanged }: { onServerChanged?: ()
 
   return (
     <div className="manager">
+      <EnginePanel onChanged={onServerChanged} />
+
       <div className="manager-row">
         <span className={`dot ${status.running ? 'on' : 'off'}`} />
         <span className="manager-state">

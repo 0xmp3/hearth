@@ -57,6 +57,8 @@ Backend URL lives in `app/src/lib/config.ts`. The model dropdown is fed by `GET 
 
 Uploads (avatars, and later attachments) are written by the manager into `data/` at the project root — gitignored, and not part of a JSON backup. Images are resized in the browser before they are sent.
 
+**No engine yet?** Settings → Backend detects your OS and GPU and offers to download a matching build into `data/engine/`. Nothing is downloaded until you press the button, and the checksum is verified before it is unpacked.
+
 With the manager running, **Settings → Backend** gains a context-size field and Start / Stop / Restart buttons. The context is passed as `-c` when the server launches, so changing it restarts the server — llama.cpp sizes the KV cache at load and cannot resize it live. Without the manager, the app uses whatever is already on 8088 and says so.
 
 `C:/AI/Models/served` is a flat folder of hardlinks to the GGUFs you want exposed — router mode can't see into subfolders. Add a model with:
