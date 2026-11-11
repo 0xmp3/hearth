@@ -22,9 +22,3 @@ export function formatTokens(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`
   return String(n)
 }
-
-/** The budget actually used: never more than the model can hold. */
-export function effectiveBudget(pref: number, modelCtx: number | undefined): number {
-  if (!modelCtx || modelCtx <= 0) return pref
-  return Math.min(pref, modelCtx)
-}

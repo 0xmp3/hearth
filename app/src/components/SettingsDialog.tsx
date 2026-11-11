@@ -88,9 +88,8 @@ export default function SettingsDialog({
             onChange={(e) => onMaxTokens(BUDGET_STOPS[Number(e.target.value)])}
           />
           <em className="hint">
-            {modelCtx && maxTokens > modelCtx
-              ? `capped at ${formatTokens(modelCtx)} — this model's context`
-              : 'the most a single reply may generate'}
+            the most a single reply may generate. The server stops at its own context
+            limit{modelCtx ? ` (${formatTokens(modelCtx)} here)` : ''}, whatever you ask for.
           </em>
         </label>
 
@@ -152,6 +151,12 @@ export default function SettingsDialog({
             ? 'No models reported by the server.'
             : `${models.length} model${models.length === 1 ? '' : 's'}: ${models.map((m) => m.id).join(', ')}`}
         </p>
+        {modelCtx ? (
+          <p className="hint">
+            Server context: {formatTokens(modelCtx)} — what this server was launched with
+            (<code>--ctx-size</code>), not the model's maximum.
+          </p>
+        ) : null}
         <div className="row">
           <button className="ghost" onClick={onModels}>Browse model folder…</button>
         </div>

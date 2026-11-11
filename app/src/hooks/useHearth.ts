@@ -7,7 +7,6 @@ import { listModels, type ModelInfo } from '../lib/models'
 import { chatTurn, type TurnDriver } from '../lib/turn'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
-import { effectiveBudget } from '../lib/budget'
 import type { ChatMessage, Stats } from '../lib/stream'
 
 export function useHearth(
@@ -108,8 +107,10 @@ export function useHearth(
       await turn({
         model: activeModel,
         messages: history,
-        // Never ask for more than the model can hold.
-        maxTokens: effectiveBudget(maxTokens, models.find((m) => m.id === activeModel)?.ctx),
+        // Sent as asked. `--ctx-size` is what the server allocated, not what the
+        // model can do, and llama.cpp stops at its own limit anyway. Clamping
+        // here would silently override the user's choice.
+        maxTokens,
         signal: controller.signal,
         append: (field, text) => {
           const draft = draftRef.current
