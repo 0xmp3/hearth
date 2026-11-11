@@ -12,7 +12,7 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 
 ## Status
 
-**v0.1 — phase 0 done.** Type, stream, stop. No persistence yet (refresh loses the thread) — that's phase 1.
+**v0.2 — phase 1 done.** Conversations persist, partial replies survive a reload, model is per-conversation. No markdown rendering yet — that's phase 2.
 
 ## Run it
 

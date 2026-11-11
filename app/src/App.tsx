@@ -1,141 +1,44 @@
-import { useEffect, useRef, useState } from 'react'
-import { listModels, streamChat, type ChatMessage, type ModelInfo, type Stats } from './lib/stream'
-import { BASE_URL, SYSTEM_PROMPT } from './lib/config'
+import Sidebar from './components/Sidebar'
+import Chat from './components/Chat'
+import Composer from './components/Composer'
+import { useHearth } from './hooks/useHearth'
 
 export default function App() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [models, setModels] = useState<ModelInfo[]>([])
-  const [model, setModel] = useState('')
-  const abortRef = useRef<AbortController | null>(null)
-
-  useEffect(() => {
-    listModels(BASE_URL)
-      .then((list) => {
-        setModels(list)
-        setModel((current) => current || list[0]?.id || '')
-      })
-      .catch((err) => setError(`cannot list models: ${err.message}`))
-  }, [])
-
-  function appendToLast(field: 'content' | 'reasoning', text: string) {
-    setMessages((prev) => {
-      const next = [...prev]
-      const last = next[next.length - 1]
-      next[next.length - 1] = { ...last, [field]: (last[field] ?? '') + text }
-      return next
-    })
-  }
-
-  async function send() {
-    const text = input.trim()
-    if (!text || streaming) return
-
-    const history: ChatMessage[] = [
-      ...(SYSTEM_PROMPT ? [{ role: 'system' as const, content: SYSTEM_PROMPT }] : []),
-      ...messages,
-      { role: 'user', content: text },
-    ]
-
-    setMessages([...history, { role: 'assistant', content: '' }])
-    setInput('')
-    setError(null)
-    setStats(null)
-    setStreaming(true)
-
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    try {
-      await streamChat({
-        baseUrl: BASE_URL,
-        model,
-        messages: history,
-        signal: controller.signal,
-        onDelta: (delta) => appendToLast('content', delta),
-        onReasoning: (delta) => appendToLast('reasoning', delta),
-        onStats: setStats,
-      })
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        // Not a failure: keep the partial reply.
-      } else {
-        setError((err as Error).message)
-      }
-    } finally {
-      setStreaming(false)
-      abortRef.current = null
-    }
-  }
-
-  function stop() {
-    abortRef.current?.abort()
-  }
+  const h = useHearth()
 
   return (
     <div className="app">
-      <header>
-        <span className="brand">hearth</span>
-        <select
-          className="model"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          disabled={streaming}
-        >
-          {models.length === 0 && <option value="">no models</option>}
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>{m.id}</option>
-          ))}
-        </select>
-      </header>
+      <Sidebar
+        conversations={h.conversations}
+        activeId={h.activeId}
+        disabled={h.streaming}
+        onSelect={h.select}
+        onCreate={h.create}
+        onDelete={h.remove}
+      />
 
-      <main>
-        {messages.length === 0 && (
-          <p className="empty">Nothing here yet. Say something.</p>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`msg ${m.role}`}>
-            <div className="role">{m.role}</div>
-            {m.reasoning && (
-              <details className="reasoning" open={!m.content}>
-                <summary>thinking</summary>
-                <div>{m.reasoning}</div>
-              </details>
-            )}
-            <div className="body">{m.content || (streaming ? '…' : '')}</div>
-          </div>
-        ))}
-        {error && <div className="error">{error}</div>}
+      <main className="main">
+        <header className="topbar">
+          <select
+            className="model"
+            value={h.model}
+            onChange={(e) => h.setModel(e.target.value)}
+            disabled={h.streaming}
+          >
+            {h.models.length === 0 && <option value="">no models</option>}
+            {h.models.map((m) => (
+              <option key={m.id} value={m.id}>{m.id}</option>
+            ))}
+          </select>
+          {h.stats?.tokPerSec && <span className="hint">{h.stats.tokPerSec.toFixed(1)} tok/s</span>}
+        </header>
+
+        <Chat messages={h.messages} streaming={h.streaming} />
+
+        {h.error && <div className="error">{h.error}</div>}
+
+        <Composer streaming={h.streaming} onSend={h.send} onStop={h.stop} />
       </main>
-
-      <footer>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
-            }
-          }}
-          placeholder="Message…  (Enter to send, Shift+Enter for a newline)"
-          rows={3}
-          autoFocus
-        />
-        <div className="controls">
-          <span className="stats">
-            {stats?.tokPerSec ? `${stats.tokPerSec.toFixed(1)} tok/s` : ''}
-          </span>
-          {streaming ? (
-            <button onClick={stop} className="stop">Stop</button>
-          ) : (
-            <button onClick={send} disabled={!input.trim()}>Send</button>
-          )}
-        </div>
-      </footer>
     </div>
   )
 }
