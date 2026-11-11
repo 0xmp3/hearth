@@ -1,19 +1,34 @@
 // The whole project in miniature: POST, read the body as a stream,
 // split SSE frames, accumulate deltas, stop when asked.
 
+export type ModelInfo = { id: string; status?: string }
+
+export async function listModels(baseUrl: string): Promise<ModelInfo[]> {
+  const res = await fetch(`${baseUrl}/v1/models`)
+  if (!res.ok) throw new Error(`models ${res.status}`)
+  const json = await res.json()
+  return (json.data ?? []).map((m: any) => ({ id: m.id, status: m.status?.value }))
+}
+
 export type Stats = {
   tokPerSec?: number
   promptTokPerSec?: number
   completionTokens?: number
 }
 
-export type ChatMessage = { role: 'user' | 'assistant' | 'system'; content: string }
+export type ChatMessage = {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  reasoning?: string
+}
 
 export type StreamOptions = {
   baseUrl: string
+  model: string
   messages: ChatMessage[]
   signal: AbortSignal
   onDelta: (text: string) => void
+  onReasoning?: (text: string) => void
   onStats?: (stats: Stats) => void
 }
 
@@ -23,7 +38,8 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     signal: opts.signal,
     body: JSON.stringify({
-      messages: opts.messages,
+      model: opts.model,
+      messages: opts.messages.map(({ role, content }) => ({ role, content })),
       stream: true,
       max_tokens: 1024,
     }),
@@ -64,9 +80,11 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
           continue // partial or non-JSON keepalive
         }
 
-        const choice = chunk.choices?.[0]
-        const text = choice?.delta?.content
-        if (text) opts.onDelta(text)
+        const delta = chunk.choices?.[0]?.delta
+        // Reasoning models stream thinking in a separate field. Dropping it
+        // makes the app look frozen until the answer starts.
+        if (delta?.reasoning_content) opts.onReasoning?.(delta.reasoning_content)
+        if (delta?.content) opts.onDelta(delta.content)
 
         if (chunk.timings && opts.onStats) {
           opts.onStats({

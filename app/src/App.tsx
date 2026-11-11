@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
-import { streamChat, type ChatMessage, type Stats } from './lib/stream'
-import { BASE_URL, MODEL, SYSTEM_PROMPT } from './lib/config'
+import { useEffect, useRef, useState } from 'react'
+import { listModels, streamChat, type ChatMessage, type ModelInfo, type Stats } from './lib/stream'
+import { BASE_URL, SYSTEM_PROMPT } from './lib/config'
 
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -8,7 +8,27 @@ export default function App() {
   const [streaming, setStreaming] = useState(false)
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [model, setModel] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    listModels(BASE_URL)
+      .then((list) => {
+        setModels(list)
+        setModel((current) => current || list[0]?.id || '')
+      })
+      .catch((err) => setError(`cannot list models: ${err.message}`))
+  }, [])
+
+  function appendToLast(field: 'content' | 'reasoning', text: string) {
+    setMessages((prev) => {
+      const next = [...prev]
+      const last = next[next.length - 1]
+      next[next.length - 1] = { ...last, [field]: (last[field] ?? '') + text }
+      return next
+    })
+  }
 
   async function send() {
     const text = input.trim()
@@ -32,15 +52,11 @@ export default function App() {
     try {
       await streamChat({
         baseUrl: BASE_URL,
+        model,
         messages: history,
         signal: controller.signal,
-        onDelta: (delta) =>
-          setMessages((prev) => {
-            const next = [...prev]
-            const last = next[next.length - 1]
-            next[next.length - 1] = { ...last, content: last.content + delta }
-            return next
-          }),
+        onDelta: (delta) => appendToLast('content', delta),
+        onReasoning: (delta) => appendToLast('reasoning', delta),
         onStats: setStats,
       })
     } catch (err) {
@@ -63,7 +79,17 @@ export default function App() {
     <div className="app">
       <header>
         <span className="brand">hearth</span>
-        <span className="model">{MODEL}</span>
+        <select
+          className="model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          disabled={streaming}
+        >
+          {models.length === 0 && <option value="">no models</option>}
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>{m.id}</option>
+          ))}
+        </select>
       </header>
 
       <main>
@@ -73,6 +99,12 @@ export default function App() {
         {messages.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>
             <div className="role">{m.role}</div>
+            {m.reasoning && (
+              <details className="reasoning" open={!m.content}>
+                <summary>thinking</summary>
+                <div>{m.reasoning}</div>
+              </details>
+            )}
             <div className="body">{m.content || (streaming ? '…' : '')}</div>
           </div>
         ))}

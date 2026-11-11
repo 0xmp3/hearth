@@ -36,7 +36,33 @@ header {
 }
 
 .brand { font-weight: 600; letter-spacing: 0.02em; }
-.model { color: var(--muted); font-size: 12px; }
+.model {
+  color: var(--muted);
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-family: inherit;
+  max-width: 340px;
+}
+
+.reasoning {
+  color: var(--muted);
+  font-size: 13px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+}
+
+.reasoning summary {
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
 
 main {
   flex: 1;

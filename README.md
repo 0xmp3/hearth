@@ -19,9 +19,9 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 Two terminals:
 
 ```bash
-# 1. the model
+# 1. the models (router mode: one process, switch models in the app)
 cd "/c/AI/Llama Rocm"
-./llama-server.exe -m "C:/AI/Models/Gemma/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q6_K_P.gguf" \
+./llama-server.exe --models-dir "C:/AI/Models/served" --models-max 1 \
   --port 8088 -c 8192 -ngl 99 --jinja
 
 # 2. the app
@@ -29,7 +29,15 @@ cd ~/Documents/Hermes/hearth/app
 npm run dev          # http://localhost:5173
 ```
 
-Backend URL lives in `app/src/lib/config.ts`. If the model is still loading, the app shows a `503` error — wait a few seconds and send again.
+Backend URL lives in `app/src/lib/config.ts`. The model dropdown is fed by `GET /v1/models`.
+
+`C:/AI/Models/served` is a flat folder of hardlinks to the GGUFs you want exposed — router mode can't see into subfolders. Add a model with:
+
+```bash
+ln "/c/AI/Models/<dir>/<model>.gguf" "/c/AI/Models/served/<short-name>.gguf"
+```
+
+Switching models unloads the previous one, so the first reply after a switch waits for a full load (~20s for the 14 GB Gemma). That's the router, not a bug.
 
 ## Backend (verified on this machine, 2026-11-11)
 

@@ -16,6 +16,55 @@ While the model loads, requests return `503` with `{"error":{"message":"Loading 
 
 Ports in use on this box: **8080 = Strata**, **8088 = our llama-server**.
 
+## Router mode (model selection)
+
+This build has a router server: one process, many models, loaded on demand.
+
+```bash
+cd "/c/AI/Llama Rocm"
+./llama-server.exe --models-dir "C:/AI/Models/served" --models-max 1 \
+  --port 8088 -c 8192 -ngl 99 --jinja
+```
+
+`GET /props` confirms it: `{"role":"router","max_instances":1,"models_autoload":true}`.
+
+**The directory must be flat.** Pointing `--models-dir` at `C:/AI/Models` (which has subfolders) lists the *subfolders* as models — `Gemma`, `Qwen`, `Ornith` — and requesting one fails with `500 model name=Gemma failed to load`. Point it at a folder of `.gguf` files.
+
+`C:/AI/Models/served` is that folder, built from hardlinks so nothing is duplicated on disk:
+
+```bash
+mkdir -p /c/AI/Models/served
+ln "/c/AI/Models/Gemma/gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf" "/c/AI/Models/served/gemma-4-26b-a4b-it-q4.gguf"
+```
+
+`ln` on NTFS makes a hardlink (link count 2, zero extra bytes). Add or remove entries to change what the app can see.
+
+### GET /v1/models (router)
+
+```json
+{
+  "data": [
+    {
+      "id": "gemma-4-26b-a4b-it-q4",
+      "object": "model",
+      "owned_by": "llamacpp",
+      "status": {
+        "value": "unloaded",
+        "args": ["...llama-server.exe", "--host", "127.0.0.1", "--jinja",
+                 "--port", "0", "--alias", "gemma-4-26b-a4b-it-q4",
+                 "--ctx-size", "8192", "--model", "C:/AI/Models/served\\gemma-4-26b-a4b-it-q4.gguf",
+                 "--n-gpu-layers", "99"]
+      }
+    }
+  ]
+}
+```
+
+- `id` is the filename without `.gguf` — clean enough to show directly.
+- `status.value` is `loaded` or `unloaded`; useful for a "loading…" hint.
+- The child process inherits `-c`, `-ngl`, `--jinja` from the router, so per-model flags are **not** possible in this mode. That's the trade: free model switching, no per-model tuning.
+- `--models-max 1` means switching unloads the previous model. First token after a switch waits for a full load (~20s for the 14 GB Gemma). Not a hang.
+
 ## GET /v1/models
 
 ```json
@@ -68,6 +117,20 @@ Notes that matter for `stream.ts`:
 - `[DONE]` is a bare sentinel line, not JSON. Stop parsing before `JSON.parse`.
 - Content is delivered token-ish, so text arrives in fragments ("Hello", " there") — concatenating naively is correct, but do not assume word boundaries.
 
+## Reasoning models stream a different field
+
+`gemma-4-26B-A4B-it` is a reasoning model. Its deltas arrive as `delta.reasoning_content`, and `delta.content` stays `null` until thinking finishes:
+
+```json
+{"choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":null}}]}
+{"choices":[{"index":0,"finish_reason":null,"delta":{"reasoning_content":"*"}}]}
+{"choices":[{"index":0,"finish_reason":null,"delta":{"reasoning_content":"   Subject"}}]}
+```
+
+A client that only reads `delta.content` shows nothing at all — the app looks frozen while the model is thinking. `stream.ts` now handles both and renders thinking in a collapsed block.
+
+With `max_tokens: 80` this model spent the entire budget thinking and never emitted an answer. Budget accordingly, or the reply looks empty.
+
 ## POST /v1/chat/completions (non-streaming)
 
 Same body with `"stream": false`. Chosen keys from the verified response:
@@ -96,4 +159,4 @@ For comparison, Strata on DeepSeek V4.1 Flash IQ2_XXS runs ~10 tok/s — so the 
 
 1. `curl 127.0.0.1:8080/v1/models` with Strata running — does it expose the OpenAI API or only its own pack protocol over the control socket in `AppData\Local\Strata\runtime\launch-*.json`?
 2. Whether this llama.cpp build loads `deepseek41` arch (`C:/AI/Models/Deepseek-V4.1-Flash/IQ2_XXS/...00001-of-00006.gguf`).
-3. Whether `/v1/models` can list more than the one loaded model (llama-server is one-model-per-process by default, so probably not — the picker may become a launcher rather than a dropdown).
+3. ~~Whether `/v1/models` can list more than one model~~ — answered: router mode does, see above. Per-model flags are the remaining gap, which is what a launcher would solve.
