@@ -13,7 +13,16 @@ function gb(n: number | null | undefined) {
   return n == null ? '—' : n.toFixed(1)
 }
 
-export default function MetricsStrip({ model, enabled }: { model?: string; enabled: boolean }) {
+export default function MetricsStrip({
+  model,
+  enabled,
+  compact = false,
+}: {
+  model?: string
+  enabled: boolean
+  /** Collapsed rail: a bare VRAM bar, no text. */
+  compact?: boolean
+}) {
   const { snapshot, error } = useMetrics(enabled, model)
   const [open, setOpen] = useState(false)
 
@@ -39,6 +48,17 @@ export default function MetricsStrip({ model, enabled }: { model?: string; enabl
   const gpu = system.gpu
   const vramPct = gpu && gpu.vramTotalGb ? Math.min(100, (gpu.vramUsedGb / gpu.vramTotalGb) * 100) : 0
   const tps = server?.tokensPerSecond ?? null
+
+  if (compact) {
+    const label = gpu
+      ? `${gb(gpu.vramUsedGb)}/${gb(gpu.vramTotalGb)} GB · ${tps && tps > 0 ? `${tps.toFixed(0)} t/s` : 'idle'}`
+      : 'no gpu'
+    return (
+      <div className="metrics-rail" title={label}>
+        <span className="vram-fill" style={{ width: `${vramPct}%` }} />
+      </div>
+    )
+  }
 
   const promptTotal = (server?.promptTokens ?? 0) + (server?.promptTokensCached ?? 0)
   const cacheHit = promptTotal > 0 ? Math.round(((server?.promptTokensCached ?? 0) / promptTotal) * 100) : null

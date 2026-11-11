@@ -62,6 +62,8 @@ export default function Sidebar({
           ))}
         </nav>
 
+        <MetricsStrip model={model} enabled={showMetrics} compact />
+
         <div className="sidebar-foot rail">
           <button className="rail-btn" onClick={onProfile} title="Profiles">
             <Avatar name={user.name} src={user.avatar} size={20} />

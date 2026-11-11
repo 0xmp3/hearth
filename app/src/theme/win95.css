@@ -182,6 +182,19 @@
   box-shadow: none;
 }
 
+/* Rail buttons are fixed-size squares. The generic button padding above would
+   squeeze their contents to a few pixels and push them out of the box, so they
+   opt out of it — including on :active, which shifts padding for the press. */
+[data-chrome='win95'] .rail-btn,
+[data-chrome='win95'] .rail-conv {
+  padding: 0;
+}
+
+[data-chrome='win95'] .rail-btn:active,
+[data-chrome='win95'] .rail-conv:active {
+  padding: 0;
+}
+
 [data-chrome='win95'] button:hover:not(:disabled) {
   opacity: 1;
   background: var(--raised);
