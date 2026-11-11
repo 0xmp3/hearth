@@ -32,6 +32,41 @@ const TEXT_EXT =
 /** Roughly 25k tokens. Past this the file stops being context and starts being a bill. */
 const MAX_TEXT_CHARS = 100_000
 
+export function isPdf(file: File) {
+  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+}
+
+/**
+ * Extract text from a PDF.
+ *
+ * pdfjs is imported lazily so the ~1 MB parser is only fetched when someone
+ * actually attaches a PDF — the app's first load stays as small as it was.
+ */
+async function readPdf(file: File): Promise<string> {
+  const pdfjs = await import('pdfjs-dist')
+  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default
+
+  const task = pdfjs.getDocument({ data: await file.arrayBuffer() })
+  const doc = await task.promise
+  const pages: string[] = []
+
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i)
+    const content = await page.getTextContent()
+    const text = content.items
+      .map((item) => ('str' in item ? item.str : ''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (text) pages.push(text)
+  }
+
+  // The loading task owns teardown; the document proxy does not.
+  await task.destroy()
+  return pages.join('\n\n')
+}
+
 export function isTextLike(file: File) {
   return (
     file.type.startsWith('text/') ||
@@ -42,7 +77,7 @@ export function isTextLike(file: File) {
 }
 
 export function isSupported(file: File) {
-  return file.type.startsWith('image/') || isTextLike(file)
+  return file.type.startsWith('image/') || isPdf(file) || isTextLike(file)
 }
 
 export async function readAttachment(file: File): Promise<Attachment> {
@@ -56,6 +91,20 @@ export async function readAttachment(file: File): Promise<Attachment> {
   if (file.type.startsWith('image/')) {
     const { url } = await uploadImage(file, 'attachment')
     return { ...base, kind: 'image', url }
+  }
+
+  if (isPdf(file)) {
+    const raw = await readPdf(file)
+    if (!raw.trim()) {
+      throw new Error(`${file.name}: no text found — it may be a scanned PDF`)
+    }
+    const truncated = raw.length > MAX_TEXT_CHARS
+    return {
+      ...base,
+      kind: 'text',
+      text: truncated ? raw.slice(0, MAX_TEXT_CHARS) : raw,
+      truncated,
+    }
   }
 
   if (isTextLike(file)) {

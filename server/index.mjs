@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url'
 
 import * as metrics from './metrics/index.mjs'
 import { serverView } from './metrics/server-view.mjs'
+import { buildPreset } from './engine/preset.mjs'
 import { detect } from './engine/detect.mjs'
 import { pickSource } from './engine/catalog.mjs'
 import { install, progress, isInstalled } from './engine/install.mjs'
@@ -103,12 +104,25 @@ function start({ ctx, ngl }) {
   }
 
   const cfg = readConfig(DATA)
+  const useCtx = ctx ?? cfg.ctx ?? 16384
+  const useNgl = ngl ?? cfg.ngl ?? 99
+
+  // A preset is generated on every start so new models and new projectors are
+  // picked up. It replaces --models-dir: the preset lists every model itself,
+  // and it is the only way to give one of them an mmproj.
+  const preset = buildPreset(models.path, join(DATA, 'models-preset.ini'), {
+    ctx: useCtx,
+    ngl: useNgl,
+  })
+  push(
+    `[manager] preset: ${preset.models.length} model(s)` +
+      (preset.withVision.length ? `, vision: ${preset.withVision.join(', ')}` : ', no projectors'),
+  )
+
   const args = [
-    '--models-dir', models.path,
+    '--models-preset', preset.path,
     '--models-max', '1',
     '--port', String(LLAMA_PORT),
-    '-c', String(ctx ?? cfg.ctx ?? 16384),
-    '-ngl', String(ngl ?? cfg.ngl ?? 99),
     '--jinja',
     // Exposes /metrics, which is where the KV cache and slot numbers come from.
     '--metrics',
