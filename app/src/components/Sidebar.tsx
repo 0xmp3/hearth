@@ -7,9 +7,22 @@ type Props = {
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
+  themeId: string
+  themes: { id: string; name: string }[]
+  onTheme: (id: string) => void
 }
 
-export default function Sidebar({ conversations, activeId, disabled, onSelect, onCreate, onDelete }: Props) {
+export default function Sidebar({
+  conversations,
+  activeId,
+  disabled,
+  onSelect,
+  onCreate,
+  onDelete,
+  themeId,
+  themes,
+  onTheme,
+}: Props) {
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
@@ -42,6 +55,19 @@ export default function Sidebar({ conversations, activeId, disabled, onSelect, o
           </div>
         ))}
       </nav>
+
+      <div className="sidebar-foot">
+        <select
+          className="theme-select"
+          value={themeId}
+          onChange={(e) => onTheme(e.target.value)}
+          title="Theme"
+        >
+          {themes.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </div>
     </aside>
   )
 }

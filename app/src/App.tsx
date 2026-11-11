@@ -3,9 +3,11 @@ import Sidebar from './components/Sidebar'
 import Chat from './components/Chat'
 import Composer from './components/Composer'
 import { useHearth } from './hooks/useHearth'
+import { useTheme } from './theme/apply'
 
 export default function App() {
   const h = useHearth()
+  const t = useTheme()
   const [showSystem, setShowSystem] = useState(false)
   const [sysDraft, setSysDraft] = useState('')
   const sysRef = useRef('')
@@ -47,6 +49,9 @@ export default function App() {
         onSelect={h.select}
         onCreate={h.create}
         onDelete={h.remove}
+        themeId={t.themeId}
+        themes={t.available}
+        onTheme={t.setTheme}
       />
 
       <main className="main">

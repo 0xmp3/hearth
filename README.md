@@ -12,7 +12,7 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 
 ## Status
 
-**v1.0 — phase 2 done.** Markdown with syntax highlighting and copy buttons, regenerate, edit-and-resend, per-conversation system prompt. Local only: no remote, nothing leaves this machine.
+**v1.1 — theming engine.** Markdown, regenerate, edit-and-resend, per-conversation system prompt, and three swappable themes (Hearth, Parchment, Slate). Local only: no remote, nothing leaves this machine.
 
 ## Run it
 
