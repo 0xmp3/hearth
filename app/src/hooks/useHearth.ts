@@ -65,6 +65,69 @@ export function useHearth(turn: TurnDriver = chatTurn) {
     }
   }, [])
 
+  // ---- helpers ----------------------------------------------------------
+  function buildHistory(msgs: db.Message[], conv: db.Conversation): ChatMessage[] {
+    const system = conv.systemPrompt?.trim() || SYSTEM_PROMPT
+    return [
+      ...(system ? [{ role: 'system' as const, content: system }] : []),
+      // An assistant turn that produced no text (thinking ate the budget, or
+      // the user stopped it before the first token) is noise to the model and
+      // makes it reason about "the empty response" instead of the question.
+      ...msgs
+        .filter((m) => m.content.trim().length > 0)
+        .map((m) => ({ role: m.role, content: m.content })),
+    ]
+  }
+
+  function touch(conv: db.Conversation) {
+    const updated = { ...conv, updatedAt: Date.now() }
+    void db.putConversation(updated)
+    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+  }
+
+  // One place where a turn is run. send / regenerate / edit all funnel here.
+  async function runTurn(conv: db.Conversation, history: ChatMessage[], assistantMsg: db.Message) {
+    const controller = new AbortController()
+    abortRef.current = controller
+    draftRef.current = assistantMsg
+    setStreaming(true)
+
+    try {
+      await turn({
+        model: conv.model || model,
+        messages: history,
+        signal: controller.signal,
+        append: (field, text) => {
+          const draft = draftRef.current
+          if (!draft) return
+          draft[field] = (draft[field] ?? '') + text
+          const snapshot = { ...draft }
+          setMessages((prev) => prev.map((m) => (m.id === snapshot.id ? snapshot : m)))
+          scheduleSave()
+        },
+        onStats: (s) => {
+          setStats(s)
+          if (draftRef.current) {
+            draftRef.current.stats = { tokPerSec: s.tokPerSec, completionTokens: s.completionTokens }
+          }
+        },
+      })
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        // Not a failure: keep what we have and mark it partial.
+        if (draftRef.current) draftRef.current.aborted = true
+      } else {
+        setError((err as Error).message)
+      }
+    } finally {
+      flushSave()
+      draftRef.current = null
+      abortRef.current = null
+      setStreaming(false)
+      touch(conv)
+    }
+  }
+
   // ---- actions ----------------------------------------------------------
   async function select(id: string) {
     if (streaming) return
@@ -74,17 +137,6 @@ export function useHearth(turn: TurnDriver = chatTurn) {
     setStats(null)
     setError(null)
     setMessages(await db.listMessages(id))
-  }
-
-  // The model belongs to the conversation, not to the app: switching model
-  // mid-thread would silently change what the next reply comes from.
-  async function changeModel(modelId: string) {
-    setModel(modelId)
-    const conv = conversations.find((c) => c.id === activeId)
-    if (!conv) return
-    const updated = { ...conv, model: modelId }
-    await db.putConversation(updated)
-    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
   }
 
   async function create() {
@@ -112,6 +164,25 @@ export function useHearth(turn: TurnDriver = chatTurn) {
       setActiveId(null)
       setMessages([])
     }
+  }
+
+  // The model belongs to the conversation, not to the app: switching model
+  // mid-thread would silently change what the next reply comes from.
+  async function changeModel(modelId: string) {
+    setModel(modelId)
+    const conv = conversations.find((c) => c.id === activeId)
+    if (!conv) return
+    const updated = { ...conv, model: modelId }
+    await db.putConversation(updated)
+    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+  }
+
+  async function setSystemPrompt(text: string) {
+    const conv = conversations.find((c) => c.id === activeId)
+    if (!conv) return
+    const updated = { ...conv, systemPrompt: text }
+    await db.putConversation(updated)
+    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
   }
 
   async function send(text: string) {
@@ -155,73 +226,88 @@ export function useHearth(turn: TurnDriver = chatTurn) {
       createdAt: now + 1,
     }
 
-    setMessages((prev) => [...prev, userMsg, assistantMsg])
+    const next = [...messages, userMsg]
+    setMessages([...next, assistantMsg])
     await db.putMessage(userMsg)
     await db.putMessage(assistantMsg)
-    draftRef.current = assistantMsg
 
-    const history: ChatMessage[] = [
-      ...(SYSTEM_PROMPT ? [{ role: 'system' as const, content: SYSTEM_PROMPT }] : []),
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user' as const, content: trimmed },
-    ]
+    await runTurn(conv, buildHistory(next, conv), assistantMsg)
+  }
 
-    const controller = new AbortController()
-    abortRef.current = controller
-    setStreaming(true)
+  // Throw away the last reply and ask again with the same history.
+  async function regenerate() {
+    if (streaming) return
+    const conv = conversations.find((c) => c.id === activeId)
+    if (!conv) return
 
-    try {
-      await turn({
-        model: conv.model || model,
-        messages: history,
-        signal: controller.signal,
-        append: (field, text) => {
-          const draft = draftRef.current
-          if (!draft) return
-          draft[field] = (draft[field] ?? '') + text
-          const snapshot = { ...draft }
-          setMessages((prev) => prev.map((m) => (m.id === snapshot.id ? snapshot : m)))
-          scheduleSave()
-        },
-        onStats: (s) => {
-          setStats(s)
-          if (draftRef.current) {
-            draftRef.current.stats = { tokPerSec: s.tokPerSec, completionTokens: s.completionTokens }
-          }
-        },
-      })
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        // Not a failure: keep what we have and mark it partial.
-        if (draftRef.current) draftRef.current.aborted = true
-      } else {
-        setError((err as Error).message)
-      }
-    } finally {
-      flushSave()
-      const finished = draftRef.current
-      draftRef.current = null
-      abortRef.current = null
-      setStreaming(false)
-      if (finished) {
-        const updated = { ...conv, updatedAt: Date.now() }
-        await db.putConversation(updated)
-        setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-      }
+    const lastIdx = messages.map((m) => m.role).lastIndexOf('assistant')
+    if (lastIdx === -1) return
+
+    await db.deleteMessage(messages[lastIdx].id)
+    const kept = messages.slice(0, lastIdx)
+    const assistantMsg: db.Message = {
+      id: db.newId(),
+      conversationId: conv.id,
+      role: 'assistant',
+      content: '',
+      createdAt: Date.now(),
     }
+
+    setMessages([...kept, assistantMsg])
+    await db.putMessage(assistantMsg)
+    setStats(null)
+    setError(null)
+
+    await runTurn(conv, buildHistory(kept, conv), assistantMsg)
+  }
+
+  // Rewrite the last user message and drop everything after it.
+  async function editLast(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed || streaming) return
+    const conv = conversations.find((c) => c.id === activeId)
+    if (!conv) return
+
+    const lastIdx = messages.map((m) => m.role).lastIndexOf('user')
+    if (lastIdx === -1) return
+
+    const edited: db.Message = { ...messages[lastIdx], content: trimmed }
+    const dropped = messages.slice(lastIdx + 1)
+    for (const m of dropped) await db.deleteMessage(m.id)
+    await db.putMessage(edited)
+
+    const kept = [...messages.slice(0, lastIdx), edited]
+    const assistantMsg: db.Message = {
+      id: db.newId(),
+      conversationId: conv.id,
+      role: 'assistant',
+      content: '',
+      createdAt: Date.now(),
+    }
+
+    setMessages([...kept, assistantMsg])
+    await db.putMessage(assistantMsg)
+    setStats(null)
+    setError(null)
+
+    await runTurn(conv, buildHistory(kept, conv), assistantMsg)
   }
 
   function stop() {
     abortRef.current?.abort()
   }
 
+  const activeConversation = conversations.find((c) => c.id === activeId) ?? null
+
   return {
     conversations,
     activeId,
+    activeConversation,
     messages,
     models,
     model,
     setModel: changeModel,
+    setSystemPrompt,
     streaming,
     stats,
     error,
@@ -229,6 +315,8 @@ export function useHearth(turn: TurnDriver = chatTurn) {
     create,
     remove,
     send,
+    regenerate,
+    editLast,
     stop,
   }
 }

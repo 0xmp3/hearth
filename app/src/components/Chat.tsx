@@ -2,9 +2,14 @@ import { useEffect, useRef } from 'react'
 import Message from './Message'
 import type { Message as Msg } from '../lib/db'
 
-type Props = { messages: Msg[]; streaming: boolean }
+type Props = {
+  messages: Msg[]
+  streaming: boolean
+  onRegenerate: () => void
+  onEdit: (text: string) => void
+}
 
-export default function Chat({ messages, streaming }: Props) {
+export default function Chat({ messages, streaming, onRegenerate, onEdit }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
 
@@ -24,6 +29,10 @@ export default function Chat({ messages, streaming }: Props) {
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [messages])
 
+  // The last user message is never the last message overall — the reply
+  // always follows it — so "edit" needs its own index.
+  const lastUserIdx = messages.map((m) => m.role).lastIndexOf('user')
+
   return (
     <div className="chat" ref={scroller}>
       {messages.length === 0 ? (
@@ -32,7 +41,17 @@ export default function Chat({ messages, streaming }: Props) {
           <p className="hint">A quiet place to talk to a model on your own machine.</p>
         </div>
       ) : (
-        messages.map((m) => <Message key={m.id} message={m} streaming={streaming} />)
+        messages.map((m, i) => (
+          <Message
+            key={m.id}
+            message={m}
+            streaming={streaming}
+            isLast={i === messages.length - 1}
+            isLastUser={i === lastUserIdx}
+            onRegenerate={onRegenerate}
+            onEdit={onEdit}
+          />
+        ))
       )}
     </div>
   )

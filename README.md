@@ -12,7 +12,7 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 
 ## Status
 
-**v0.2 — phase 1 done.** Conversations persist, partial replies survive a reload, model is per-conversation. No markdown rendering yet — that's phase 2.
+**v1.0 — phase 2 done.** Markdown with syntax highlighting and copy buttons, regenerate, edit-and-resend, per-conversation system prompt. Local only: no remote, nothing leaves this machine.
 
 ## Run it
 

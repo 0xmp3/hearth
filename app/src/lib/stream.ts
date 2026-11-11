@@ -1,6 +1,8 @@
 // The whole project in miniature: POST, read the body as a stream,
 // split SSE frames, accumulate deltas, stop when asked.
 
+import { MAX_TOKENS } from './config'
+
 export type Stats = {
   tokPerSec?: number
   promptTokPerSec?: number
@@ -32,7 +34,7 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
       model: opts.model,
       messages: opts.messages.map(({ role, content }) => ({ role, content })),
       stream: true,
-      max_tokens: 1024,
+      max_tokens: MAX_TOKENS,
     }),
   })
 

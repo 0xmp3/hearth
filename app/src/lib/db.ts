@@ -7,6 +7,7 @@ export type Conversation = {
   createdAt: number
   updatedAt: number
   model: string
+  systemPrompt?: string
 }
 
 export type Message = {
@@ -96,6 +97,10 @@ export async function listMessages(conversationId: string): Promise<Message[]> {
 
 export function putMessage(m: Message): Promise<IDBValidKey> {
   return tx('messages', 'readwrite', (s) => s.put(m))
+}
+
+export async function deleteMessage(id: string): Promise<void> {
+  await tx('messages', 'readwrite', (s) => s.delete(id))
 }
 
 export function newId(): string {
