@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import Dialog from './Dialog'
 import Avatar from './Avatar'
 import { newId, type Persona } from '../lib/db'
-import { toAvatarDataUrl } from '../lib/image'
+import { uploadImage } from '../lib/upload'
 
 type Props = {
   onClose: () => void
@@ -48,7 +48,8 @@ export default function ProfileDialog({
     e.target.value = ''
     if (!file) return
     try {
-      onUserAvatar(await toAvatarDataUrl(file))
+      const result = await uploadImage(file, 'avatar')
+      onUserAvatar(result.url)
       setError(null)
     } catch (err) {
       setError((err as Error).message)
@@ -60,7 +61,8 @@ export default function ProfileDialog({
     e.target.value = ''
     if (!file || !draft) return
     try {
-      setDraft({ ...draft, avatar: await toAvatarDataUrl(file) })
+      const result = await uploadImage(file, 'avatar')
+      setDraft({ ...draft, avatar: result.url })
       setError(null)
     } catch (err) {
       setError((err as Error).message)
