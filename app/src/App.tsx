@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Sidebar from './components/Sidebar'
+import TabBar from './components/TabBar'
 import Chat from './components/Chat'
 import Composer from './components/Composer'
 import Palette, { type PaletteAction } from './components/Palette'
@@ -171,7 +172,26 @@ export default function App() {
         </div>
       </div>
 
-      <div className={`app-body${prefs.sidebarCollapsible && prefs.sidebarCollapsed ? ' collapsed' : ''}`}>
+      {prefs.layout === 'tabs' && (
+        <TabBar
+          conversations={h.conversations}
+          activeId={h.activeId}
+          disabled={h.streaming}
+          user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
+          onSelect={h.select}
+          onCreate={h.create}
+          onDelete={(id) => setConfirmDelete(id)}
+          onProfile={() => setDialog('profile')}
+          onSettings={() => setDialog('settings')}
+        />
+      )}
+
+      <div
+        className={`app-body${prefs.layout === 'tabs' ? ' tabs' : ''}${
+          prefs.layout === 'sidebar' && prefs.sidebarCollapsible && prefs.sidebarCollapsed ? ' collapsed' : ''
+        }`}
+      >
+        {prefs.layout === 'sidebar' && (
         <Sidebar
           conversations={h.conversations}
           activeId={h.activeId}
@@ -187,6 +207,7 @@ export default function App() {
           onProfile={() => setDialog('profile')}
           onPin={h.togglePin}
         />
+        )}
 
         <main className="main">
           <header className="topbar">
@@ -317,6 +338,8 @@ export default function App() {
           sidebarCollapsible={prefs.sidebarCollapsible}
           onSidebarCollapsible={(value) => updatePrefs({ sidebarCollapsible: value })}
           onModels={() => setDialog('models')}
+          layout={prefs.layout}
+          onLayout={(value) => updatePrefs({ layout: value })}
         />
       )}
 

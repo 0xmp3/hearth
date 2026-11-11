@@ -109,11 +109,14 @@ export default function ModelsDialog({ onClose }: Props) {
 
           <ul className="model-list">
             {models.map((m) => (
-              <li key={m.name}>
+              <li key={m.path}>
                 <div className="model-head">
-                  <span className="model-name">{m.name}</span>
+                  <span className="model-name" title={m.path}>{m.name}</span>
                   <span className="footnote">{formatSize(m.size)}</span>
                 </div>
+                {m.path.includes('/') && (
+                  <span className="model-path">{m.path.slice(0, m.path.lastIndexOf('/'))}</span>
+                )}
                 <div className="model-tags">
                   {m.params && <span className="tag">{m.params}</span>}
                   {m.experts && <span className="tag">{m.experts} active</span>}
@@ -121,10 +124,10 @@ export default function ModelsDialog({ onClose }: Props) {
                 </div>
                 <input
                   className="model-note"
-                  value={notes[m.name] ?? ''}
+                  value={notes[m.path] ?? ''}
                   placeholder="Add a description…"
-                  onChange={(e) => setNotes({ ...notes, [m.name]: e.target.value })}
-                  onBlur={(e) => void saveNote(m.name, e.target.value)}
+                  onChange={(e) => setNotes({ ...notes, [m.path]: e.target.value })}
+                  onBlur={(e) => void saveNote(m.path, e.target.value)}
                 />
               </li>
             ))}

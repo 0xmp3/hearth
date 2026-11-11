@@ -330,6 +330,28 @@
   border: 1px solid var(--bevel-lo);
 }
 
+/* ---------- tab layout ---------- */
+
+[data-chrome='win95'] .tabbar {
+  background: var(--bg);
+  border-bottom: 1px solid var(--bevel-lo);
+  padding: 4px 4px 0;
+}
+
+[data-chrome='win95'] .tab {
+  border-radius: 0;
+  border: 1px solid transparent;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
+[data-chrome='win95'] .tab.active {
+  background: var(--field);
+  border-color: var(--bevel-hi) var(--bevel-edge) transparent var(--bevel-hi);
+}
+
+[data-chrome='win95'] .tab-new { border-radius: 0; }
+
 /* ---------- context bar and stats ---------- */
 
 [data-chrome='win95'] .ctx-track {

@@ -23,6 +23,8 @@ type Props = {
   sidebarCollapsible: boolean
   onSidebarCollapsible: (value: boolean) => void
   onModels: () => void
+  layout: 'sidebar' | 'tabs'
+  onLayout: (value: 'sidebar' | 'tabs') => void
 }
 
 export default function SettingsDialog({
@@ -46,6 +48,8 @@ export default function SettingsDialog({
   sidebarCollapsible,
   onSidebarCollapsible,
   onModels,
+  layout,
+  onLayout,
 }: Props) {
   return (
     <Dialog
@@ -90,17 +94,27 @@ export default function SettingsDialog({
           </em>
         </label>
 
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={sidebarCollapsible}
-            onChange={(e) => onSidebarCollapsible(e.target.checked)}
-          />
-          <span>
-            Collapsible sidebar
-            <em>collapse the conversation list to a narrow rail</em>
-          </span>
+        <label className="field">
+          <span>Layout</span>
+          <select value={layout} onChange={(e) => onLayout(e.target.value as 'sidebar' | 'tabs')}>
+            <option value="sidebar">Sidebar</option>
+            <option value="tabs">Tabs across the top</option>
+          </select>
         </label>
+
+        {layout === 'sidebar' && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={sidebarCollapsible}
+              onChange={(e) => onSidebarCollapsible(e.target.checked)}
+            />
+            <span>
+              Collapsible sidebar
+              <em>collapse the conversation list to a narrow rail</em>
+            </span>
+          </label>
+        )}
 
         <label className="check">
           <input

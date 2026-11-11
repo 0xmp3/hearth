@@ -10,6 +10,8 @@ const NOTES_KEY = 'modelNotes'
 
 export type ModelFile = {
   name: string
+  /** Path relative to the chosen folder, so duplicates in different dirs differ. */
+  path: string
   size: number
   quant?: string
   params?: string
@@ -52,14 +54,30 @@ export function describeName(name: string): Pick<ModelFile, 'quant' | 'params' |
   return { quant, params, experts }
 }
 
-export async function listModels(handle: FileSystemDirectoryHandle): Promise<ModelFile[]> {
+// Walks subdirectories too — model folders are rarely flat. Depth is capped so
+// a symlinked or pathological tree cannot spin forever.
+export async function listModels(handle: FileSystemDirectoryHandle, maxDepth = 4): Promise<ModelFile[]> {
   const out: ModelFile[] = []
-  for await (const [name, entry] of (handle as any).entries()) {
-    if (entry.kind !== 'file' || !name.toLowerCase().endsWith('.gguf')) continue
-    const file = await entry.getFile()
-    out.push({ name, size: file.size, ...describeName(name) })
+
+  async function walk(dir: FileSystemDirectoryHandle, prefix: string, depth: number) {
+    for await (const [name, entry] of (dir as any).entries()) {
+      if (entry.kind === 'directory') {
+        if (depth < maxDepth) await walk(entry, prefix ? `${prefix}/${name}` : name, depth + 1)
+        continue
+      }
+      if (!name.toLowerCase().endsWith('.gguf')) continue
+      const file = await entry.getFile()
+      out.push({
+        name,
+        path: prefix ? `${prefix}/${name}` : name,
+        size: file.size,
+        ...describeName(name),
+      })
+    }
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name))
+
+  await walk(handle, '', 0)
+  return out.sort((a, b) => a.path.localeCompare(b.path))
 }
 
 export async function loadNotes(): Promise<Record<string, string>> {

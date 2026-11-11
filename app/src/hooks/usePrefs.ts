@@ -16,6 +16,8 @@ type Prefs = {
   /** Whether the sidebar can be collapsed at all. */
   sidebarCollapsible: boolean
   sidebarCollapsed: boolean
+  /** 'sidebar' = conversations down the left, 'tabs' = across the top. */
+  layout: 'sidebar' | 'tabs'
 }
 
 const DEFAULTS: Prefs = {
@@ -25,6 +27,7 @@ const DEFAULTS: Prefs = {
   userAvatar: '',
   sidebarCollapsible: true,
   sidebarCollapsed: false,
+  layout: 'sidebar',
 }
 
 function load(): Prefs {
