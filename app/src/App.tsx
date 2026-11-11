@@ -9,6 +9,8 @@ import ExportDialog from './components/ExportDialog'
 import RestoreDialog from './components/RestoreDialog'
 import { useHearth } from './hooks/useHearth'
 import { usePersonas } from './hooks/usePersonas'
+import { usePrefs } from './hooks/usePrefs'
+import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
 import { chatTurn } from './lib/turn'
 import { countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
@@ -21,11 +23,13 @@ export default function App() {
   const personas = usePersonas()
   const h = useHearth(chatTurn, personas.active?.systemPrompt)
   const t = useTheme()
+  const { prefs, update: updatePrefs } = usePrefs()
 
   const [showSystem, setShowSystem] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogName | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [messageCount, setMessageCount] = useState(0)
   const [sysDraft, setSysDraft] = useState('')
   const sysRef = useRef('')
@@ -153,14 +157,19 @@ export default function App() {
           disabled={h.streaming}
           onSelect={h.select}
           onCreate={h.create}
-          onDelete={h.remove}
+          onDelete={(id) => setConfirmDelete(id)}
           onSettings={() => setDialog('settings')}
           onProfile={() => setDialog('profile')}
           profileName={personas.active?.name ?? null}
+          onPin={h.togglePin}
         />
 
         <main className="main">
           <header className="topbar">
+            <span className="chat-title" title={h.activeConversation?.title}>
+              {h.activeConversation?.title ?? 'Hearth'}
+            </span>
+
             <select
               className="model"
               value={h.model}
@@ -201,6 +210,7 @@ export default function App() {
           <Chat
             messages={h.messages}
             streaming={h.streaming}
+            showReasoning={prefs.showReasoning}
             onRegenerate={h.regenerate}
             onEdit={h.editLast}
           />
@@ -237,6 +247,8 @@ export default function App() {
           themeId={t.themeId}
           themes={t.available}
           onTheme={t.setTheme}
+          showReasoning={prefs.showReasoning}
+          onShowReasoning={(value) => updatePrefs({ showReasoning: value })}
         />
       )}
 
@@ -262,6 +274,32 @@ export default function App() {
 
       {dialog === 'restore' && (
         <RestoreDialog onClose={() => setDialog(null)} onRestore={restore} />
+      )}
+
+      {confirmDelete && (
+        <Dialog
+          title="Delete conversation"
+          onClose={() => setConfirmDelete(null)}
+          footer={
+            <>
+              <button className="ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
+              <button
+                onClick={() => {
+                  void h.remove(confirmDelete)
+                  setConfirmDelete(null)
+                }}
+              >
+                Delete
+              </button>
+            </>
+          }
+        >
+          <p className="hint">
+            “{h.conversations.find((c) => c.id === confirmDelete)?.title ?? 'This conversation'}”
+            and its messages will be removed. This cannot be undone — export first if you
+            want to keep it.
+          </p>
+        </Dialog>
       )}
     </div>
   )

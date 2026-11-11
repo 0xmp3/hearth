@@ -110,6 +110,11 @@
   color: var(--on-accent);
 }
 
+/* The pin is accent-coloured, which vanishes on the accent selection bar. */
+[data-chrome='win95'] .conv.active .pin {
+  color: var(--on-accent);
+}
+
 /* The delete button sits on the pink selection bar; a bevel there reads as
    a stray box, so it goes flat until hovered. */
 [data-chrome='win95'] .conv.active button.ghost {

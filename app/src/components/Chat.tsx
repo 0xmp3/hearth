@@ -5,11 +5,12 @@ import type { Message as Msg } from '../lib/db'
 type Props = {
   messages: Msg[]
   streaming: boolean
+  showReasoning: boolean
   onRegenerate: () => void
   onEdit: (text: string) => void
 }
 
-export default function Chat({ messages, streaming, onRegenerate, onEdit }: Props) {
+export default function Chat({ messages, streaming, showReasoning, onRegenerate, onEdit }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
 
@@ -46,6 +47,7 @@ export default function Chat({ messages, streaming, onRegenerate, onEdit }: Prop
             key={m.id}
             message={m}
             streaming={streaming}
+            showReasoning={showReasoning}
             isLast={i === messages.length - 1}
             isLastUser={i === lastUserIdx}
             onRegenerate={onRegenerate}

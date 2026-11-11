@@ -10,6 +10,7 @@ type Props = {
   onSettings: () => void
   onProfile: () => void
   profileName: string | null
+  onPin: (id: string) => void
 }
 
 export default function Sidebar({
@@ -22,6 +23,7 @@ export default function Sidebar({
   onSettings,
   onProfile,
   profileName,
+  onPin,
 }: Props) {
   return (
     <aside className="sidebar">
@@ -37,9 +39,19 @@ export default function Sidebar({
         {conversations.map((c) => (
           <div
             key={c.id}
-            className={`conv ${c.id === activeId ? 'active' : ''}`}
+            className={`conv ${c.id === activeId ? 'active' : ''} ${c.pinnedAt ? 'pinned' : ''}`}
             onClick={() => !disabled && onSelect(c.id)}
           >
+            <button
+              className="pin"
+              title={c.pinnedAt ? 'Unpin' : 'Pin to top'}
+              onClick={(e) => {
+                e.stopPropagation()
+                onPin(c.id)
+              }}
+            >
+              {c.pinnedAt ? '★' : '☆'}
+            </button>
             <span className="conv-title">{c.title}</span>
             <button
               className="ghost tiny"

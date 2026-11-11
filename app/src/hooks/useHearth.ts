@@ -6,6 +6,7 @@ import * as db from '../lib/db'
 import { listModels, type ModelInfo } from '../lib/models'
 import { chatTurn, type TurnDriver } from '../lib/turn'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
+import { suggestTitle } from '../lib/title'
 import type { ChatMessage, Stats } from '../lib/stream'
 
 export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
@@ -131,6 +132,7 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
       if (finished?.aborted) {
         setMessages((prev) => prev.map((m) => (m.id === finished.id ? { ...finished } : m)))
       }
+      if (finished?.content.trim()) void maybeTitle(conv, history, finished.content)
       draftRef.current = null
       abortRef.current = null
       setStreaming(false)
@@ -169,10 +171,16 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
   async function remove(id: string) {
     if (streaming) return
     await db.deleteConversation(id)
-    setConversations((prev) => prev.filter((c) => c.id !== id))
+    const remaining = conversations.filter((c) => c.id !== id)
+    setConversations(remaining)
+
+    // Deleting the open conversation should land you on the next one, not on
+    // an empty screen while other conversations sit in the sidebar.
     if (activeId === id) {
-      setActiveId(null)
-      setMessages([])
+      const next = remaining[0] ?? null
+      setActiveId(next?.id ?? null)
+      if (next?.model) setModel(next.model)
+      setMessages(next ? await db.listMessages(next.id) : [])
     }
   }
 
@@ -303,6 +311,41 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
     await runTurn(conv, buildHistory(kept, conv), assistantMsg)
   }
 
+  async function togglePin(id: string) {
+    const conv = conversations.find((c) => c.id === id)
+    if (!conv) return
+    const updated = { ...conv, pinnedAt: conv.pinnedAt ? undefined : Date.now() }
+    await db.putConversation(updated)
+    const next = conversations
+      .map((c) => (c.id === updated.id ? updated : c))
+      .sort((a, b) => {
+        const ap = a.pinnedAt ?? 0
+        const bp = b.pinnedAt ?? 0
+        if (ap && bp) return bp - ap
+        if (ap) return -1
+        if (bp) return 1
+        return b.updatedAt - a.updatedAt
+      })
+    setConversations(next)
+  }
+
+  // Fire-and-forget: a failed title request must never affect the reply.
+  async function maybeTitle(conv: db.Conversation, history: ChatMessage[], reply: string) {
+    const first = history.find((m) => m.role === 'user')
+    if (!first || !reply.trim()) return
+    if (history.filter((m) => m.role === 'user').length !== 1) return
+
+    try {
+      const title = await suggestTitle(BASE_URL, conv.model || model, first.content, reply)
+      if (!title) return
+      const updated = { ...conv, title, updatedAt: Date.now() }
+      await db.putConversation(updated)
+      setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+    } catch {
+      // keep the truncated-first-message title
+    }
+  }
+
   // Re-read everything from IndexedDB. Used after an import.
   async function reload() {
     const convs = await db.listConversations()
@@ -346,5 +389,6 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
     editLast,
     stop,
     reload,
+    togglePin,
   }
 }

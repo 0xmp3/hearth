@@ -12,6 +12,8 @@ type Props = {
   themeId: string
   themes: { id: string; name: string }[]
   onTheme: (id: string) => void
+  showReasoning: boolean
+  onShowReasoning: (value: boolean) => void
 }
 
 export default function SettingsDialog({
@@ -25,6 +27,8 @@ export default function SettingsDialog({
   themeId,
   themes,
   onTheme,
+  showReasoning,
+  onShowReasoning,
 }: Props) {
   return (
     <Dialog
@@ -41,6 +45,18 @@ export default function SettingsDialog({
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={showReasoning}
+            onChange={(e) => onShowReasoning(e.target.checked)}
+          />
+          <span>
+            Show reasoning
+            <em>the thinking block above replies, when the model produces one</em>
+          </span>
         </label>
       </section>
 

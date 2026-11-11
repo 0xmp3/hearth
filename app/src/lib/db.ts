@@ -8,6 +8,8 @@ export type Conversation = {
   updatedAt: number
   model: string
   systemPrompt?: string
+  /** Set when pinned; pinned conversations sort above the rest. */
+  pinnedAt?: number
 }
 
 export type Message = {
@@ -64,7 +66,14 @@ function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) 
 
 export async function listConversations(): Promise<Conversation[]> {
   const all = await tx<Conversation[]>('conversations', 'readonly', (s) => s.getAll())
-  return all.sort((a, b) => b.updatedAt - a.updatedAt)
+  return all.sort((a, b) => {
+    const ap = a.pinnedAt ?? 0
+    const bp = b.pinnedAt ?? 0
+    if (ap && bp) return bp - ap
+    if (ap) return -1
+    if (bp) return 1
+    return b.updatedAt - a.updatedAt
+  })
 }
 
 export function putConversation(c: Conversation): Promise<IDBValidKey> {

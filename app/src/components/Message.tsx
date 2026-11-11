@@ -7,11 +7,19 @@ type Props = {
   streaming: boolean
   isLast: boolean
   isLastUser: boolean
+  showReasoning: boolean
   onRegenerate: () => void
   onEdit: (text: string) => void
 }
 
-function MessageView({ message, streaming, isLast, isLastUser, onRegenerate, onEdit }: Props) {
+function stamp(ts: number): string {
+  const d = new Date(ts)
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const sameDay = d.toDateString() === new Date().toDateString()
+  return sameDay ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
+}
+
+function MessageView({ message, streaming, isLast, isLastUser, showReasoning, onRegenerate, onEdit }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
   const empty = !message.content && !message.reasoning
@@ -24,7 +32,7 @@ function MessageView({ message, streaming, isLast, isLastUser, onRegenerate, onE
 
   return (
     <article className={`msg ${message.role}`}>
-      {message.reasoning && (
+      {showReasoning && message.reasoning && (
         <details className="reasoning" open={!message.content}>
           <summary>thinking</summary>
           <div>{message.reasoning}</div>
@@ -68,6 +76,7 @@ function MessageView({ message, streaming, isLast, isLastUser, onRegenerate, onE
         <div className="msg-actions">
           {/* Footnotes first: the action buttons are invisible until hover but
               still occupy space, which pushed the stats into the middle. */}
+          <span className="footnote">{stamp(message.createdAt)}</span>
           {message.aborted && <span className="footnote">stopped</span>}
           {message.stats?.tokPerSec && (
             <span className="footnote">
