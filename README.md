@@ -53,6 +53,12 @@ cd "/c/AI/Llama Rocm"
 - Port **8088** on purpose: Strata holds 8080.
 - Big model when we want it: `C:/AI/Models/Deepseek-V4.1-Flash/IQ2_XXS/*00001-of-00006.gguf` (point `-m` at the first shard; llama.cpp stitches splits). *Unverified whether this llama.cpp build knows the `deepseek41` arch — Strata uses its own engine for that pack. Check before relying on it.*
 
+## Resuming work
+
+1. `PLAN.md` — the status line at the top says where things stand
+2. `backlog.md` — the triaged list and the proposed order of parts
+3. `git log --oneline | head -5` — what changed last
+
 ## Running documents
 
 | File | What's in it |
