@@ -12,7 +12,7 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 
 ## Status
 
-**v1.1 — theming engine.** Markdown, regenerate, edit-and-resend, per-conversation system prompt, and three swappable themes (Hearth, Parchment, Slate). Local only: no remote, nothing leaves this machine.
+**v1.1 — theming engine.** Markdown, regenerate, edit-and-resend, per-conversation system prompt, and four swappable themes (Hearth, Parchment, Slate, and Hearth 98 — the Win95 easter egg). Local only: no remote, nothing leaves this machine.
 
 ## Run it
 

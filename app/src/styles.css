@@ -38,9 +38,19 @@ button, select, textarea { font: inherit; color: inherit; }
 /* ---------- shell ---------- */
 
 .app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Decorative slot: only the win95 chrome shows this. */
+.titlebar { display: none; }
+
+.app-body {
   display: grid;
   grid-template-columns: 232px 1fr;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .sidebar {
@@ -125,6 +135,7 @@ button, select, textarea { font: inherit; color: inherit; }
   max-width: 760px;
   margin: 0 auto;
   padding: 0 28px;
+  background: var(--field);
 }
 
 .topbar {

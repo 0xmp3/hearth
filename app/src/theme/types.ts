@@ -3,6 +3,10 @@
 
 export type ThemeColors = {
   bg: string
+  /** Content surface: the chat log. White in Win95, same as bg elsewhere. */
+  field: string
+  /** Behind the window. Only visible when a chrome insets the app. */
+  desktop: string
   panel: string
   raised: string
   text: string
@@ -30,6 +34,12 @@ export type Theme = {
   name: string
   /** Drives native widgets: scrollbars, form controls, caret. */
   scheme: 'dark' | 'light'
+  /**
+   * Colour alone can't express a bevel. `flat` is the default; `win95` opts
+   * into the chrome layer in theme/win95.css, which is scoped to
+   * [data-chrome="win95"] and touches nothing else.
+   */
+  chrome?: 'flat' | 'win95'
   colors: ThemeColors
   fonts?: ThemeFonts
 }

@@ -15,6 +15,7 @@ export function applyTheme(theme: Theme): void {
     root.style.setProperty(cssVar(key), value)
   }
   root.style.setProperty('color-scheme', theme.scheme)
+  root.setAttribute('data-chrome', theme.chrome ?? 'flat')
 
   // Fonts are optional: a theme that omits them inherits the stylesheet default.
   for (const [key, value] of Object.entries(theme.fonts ?? {})) {

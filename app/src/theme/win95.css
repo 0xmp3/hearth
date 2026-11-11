@@ -1,0 +1,320 @@
+/* Win95/98 chrome layer.
+   Everything here is scoped to [data-chrome="win95"] and touches nothing
+   else. Colour comes from the theme tokens; only the bevels, the title bar
+   gradient and the desktop backdrop are defined locally, because a bevel is
+   not a colour. */
+
+[data-chrome='win95'] {
+  --bevel-hi: #ffffff;
+  --bevel-lo: #6b6580;
+  --bevel-edge: #3d3850;
+  --title-a: #2a0845;
+  --title-b: #ff2e88;
+  --desktop-a: #2a0845;
+  --desktop-b: #12071f;
+}
+
+[data-chrome='win95'] body {
+  background: linear-gradient(180deg, var(--desktop-a) 0%, var(--desktop) 55%, var(--desktop-b) 100%);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ---------- the window ---------- */
+
+[data-chrome='win95'] .app {
+  margin: 14px;
+  height: calc(100% - 28px);
+  background: var(--bg);
+  border: 2px solid;
+  border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+[data-chrome='win95'] .titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  padding: 0 3px 0 5px;
+  font-size: 11px;
+  background: linear-gradient(90deg, var(--title-a) 0%, var(--title-b) 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  user-select: none;
+}
+
+[data-chrome='win95'] .win-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+[data-chrome='win95'] .win-buttons span {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 14px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid;
+  border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
+}
+
+/* ---------- sidebar ---------- */
+
+[data-chrome='win95'] .sidebar {
+  background: var(--bg);
+  border-right: 1px solid var(--bevel-lo);
+}
+
+[data-chrome='win95'] .sidebar-head {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--bevel-lo);
+}
+
+[data-chrome='win95'] .sidebar-head .wordmark {
+  display: none;
+}
+
+[data-chrome='win95'] .conv-list {
+  padding: 4px;
+}
+
+[data-chrome='win95'] .conv {
+  border-radius: 0;
+  border-left: 0;
+  padding: 3px 5px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+[data-chrome='win95'] .conv:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+[data-chrome='win95'] .conv.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-left: 0;
+}
+
+[data-chrome='win95'] .conv.active .conv-title {
+  color: var(--on-accent);
+}
+
+[data-chrome='win95'] .sidebar-foot {
+  border-top: 1px solid var(--bevel-lo);
+  padding: 5px 6px;
+}
+
+/* ---------- main pane ---------- */
+
+[data-chrome='win95'] .main {
+  max-width: none;
+  margin: 4px;
+  padding: 0;
+  background: var(--field);
+  border: 2px solid;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+
+[data-chrome='win95'] .topbar {
+  padding: 4px 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--bevel-lo);
+}
+
+[data-chrome='win95'] .chat {
+  padding: 10px 12px;
+  gap: 16px;
+}
+
+[data-chrome='win95'] .composer {
+  padding: 6px;
+  background: var(--bg);
+  border-top: 1px solid var(--bevel-lo);
+}
+
+[data-chrome='win95'] .system-panel {
+  padding: 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--bevel-lo);
+}
+
+/* ---------- controls ---------- */
+
+[data-chrome='win95'] button {
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid;
+  border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
+  border-radius: 0;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  box-shadow: none;
+}
+
+[data-chrome='win95'] button:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--raised);
+}
+
+[data-chrome='win95'] button:active:not(:disabled) {
+  border-color: var(--bevel-edge) var(--bevel-hi) var(--bevel-hi) var(--bevel-edge);
+  padding: 3px 9px 1px 11px;
+}
+
+[data-chrome='win95'] button:disabled {
+  color: var(--faint);
+}
+
+[data-chrome='win95'] button.ghost {
+  border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
+  padding: 2px 8px;
+}
+
+[data-chrome='win95'] button.ghost.on {
+  border-color: var(--bevel-edge) var(--bevel-hi) var(--bevel-hi) var(--bevel-edge);
+  background: var(--raised);
+  color: var(--text);
+}
+
+[data-chrome='win95'] button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+[data-chrome='win95'] button.link:active {
+  padding: 0;
+}
+
+[data-chrome='win95'] textarea {
+  background: var(--field);
+  color: var(--text);
+  border: 2px solid;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  border-radius: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+[data-chrome='win95'] textarea:focus {
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  outline: 1px dotted var(--text);
+  outline-offset: -4px;
+}
+
+[data-chrome='win95'] select {
+  background: var(--field);
+  color: var(--text);
+  border: 2px solid;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  border-radius: 0;
+  font-size: 12px;
+  padding: 1px 4px;
+}
+
+[data-chrome='win95'] .theme-select {
+  width: 100%;
+  color: var(--text);
+}
+
+/* ---------- messages ---------- */
+
+[data-chrome='win95'] .msg.user {
+  background: var(--raised);
+  border: 1px solid var(--bevel-lo);
+  border-radius: 0;
+  padding: 5px 8px;
+}
+
+[data-chrome='win95'] .msg .body {
+  font-size: 12px;
+}
+
+[data-chrome='win95'] .reasoning {
+  border-left: 2px solid var(--bevel-lo);
+  font-size: 11px;
+}
+
+[data-chrome='win95'] .reasoning summary {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+[data-chrome='win95'] .hint,
+[data-chrome='win95'] .footnote {
+  font-size: 11px;
+}
+
+[data-chrome='win95'] .empty-mark {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--muted);
+}
+
+/* ---------- code ---------- */
+
+[data-chrome='win95'] .code-wrap pre {
+  background: var(--field);
+  border: 2px solid;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  border-radius: 0;
+  font-size: 11px;
+  /* A sunken field on white loses its bottom-right edge entirely; this puts
+     a hairline back so the block reads as a box. */
+  box-shadow: inset -1px -1px 0 var(--border);
+}
+
+[data-chrome='win95'] .body code {
+  background: var(--raised);
+  border-radius: 0;
+}
+
+[data-chrome='win95'] .copy {
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid;
+  border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
+}
+
+[data-chrome='win95'] .body table th {
+  background: var(--raised);
+}
+
+[data-chrome='win95'] .body th,
+[data-chrome='win95'] .body td {
+  border: 1px solid var(--bevel-lo);
+}
+
+/* ---------- chunky scrollbars ---------- */
+
+[data-chrome='win95'] ::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+
+[data-chrome='win95'] ::-webkit-scrollbar-track {
+  background: var(--raised);
+}
+
+[data-chrome='win95'] ::-webkit-scrollbar-thumb {
+  background: var(--bg);
+  border: 2px solid;
+  border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
+}
+
+[data-chrome='win95'] ::-webkit-scrollbar-corner {
+  background: var(--raised);
+}

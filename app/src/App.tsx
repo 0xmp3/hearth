@@ -42,68 +42,80 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar
-        conversations={h.conversations}
-        activeId={h.activeId}
-        disabled={h.streaming}
-        onSelect={h.select}
-        onCreate={h.create}
-        onDelete={h.remove}
-        themeId={t.themeId}
-        themes={t.available}
-        onTheme={t.setTheme}
-      />
+      {/* Decorative. Only the win95 chrome displays this. */}
+      <div className="titlebar" aria-hidden="true">
+        <span className="titlebar-text">hearth.exe</span>
+        <div className="win-buttons">
+          <span>_</span>
+          <span>□</span>
+          <span>×</span>
+        </div>
+      </div>
 
-      <main className="main">
-        <header className="topbar">
-          <select
-            className="model"
-            value={h.model}
-            onChange={(e) => h.setModel(e.target.value)}
-            disabled={h.streaming}
-          >
-            {h.models.length === 0 && <option value="">no models</option>}
-            {h.models.map((m) => (
-              <option key={m.id} value={m.id}>{m.id}</option>
-            ))}
-          </select>
-
-          <div className="topbar-right">
-            {h.stats?.tokPerSec && <span className="hint">{h.stats.tokPerSec.toFixed(1)} tok/s</span>}
-            <button
-              className={`ghost ${showSystem ? 'on' : ''}`}
-              onClick={() => setShowSystem((v) => !v)}
-              disabled={!h.activeConversation}
-              title="System prompt for this conversation"
-            >
-              system
-            </button>
-          </div>
-        </header>
-
-        {showSystem && h.activeConversation && (
-          <div className="system-panel">
-            <textarea
-              value={sysDraft}
-              onChange={(e) => onSystemChange(e.target.value)}
-              onBlur={flushSystem}
-              placeholder="System prompt for this conversation. Saved as you type."
-              rows={3}
-            />
-          </div>
-        )}
-
-        <Chat
-          messages={h.messages}
-          streaming={h.streaming}
-          onRegenerate={h.regenerate}
-          onEdit={h.editLast}
+      <div className="app-body">
+        <Sidebar
+          conversations={h.conversations}
+          activeId={h.activeId}
+          disabled={h.streaming}
+          onSelect={h.select}
+          onCreate={h.create}
+          onDelete={h.remove}
+          themeId={t.themeId}
+          themes={t.available}
+          onTheme={t.setTheme}
         />
 
-        {h.error && <div className="error">{h.error}</div>}
+        <main className="main">
+          <header className="topbar">
+            <select
+              className="model"
+              value={h.model}
+              onChange={(e) => h.setModel(e.target.value)}
+              disabled={h.streaming}
+            >
+              {h.models.length === 0 && <option value="">no models</option>}
+              {h.models.map((m) => (
+                <option key={m.id} value={m.id}>{m.id}</option>
+              ))}
+            </select>
 
-        <Composer streaming={h.streaming} onSend={h.send} onStop={h.stop} />
-      </main>
+            <div className="topbar-right">
+              {h.stats?.tokPerSec && <span className="hint">{h.stats.tokPerSec.toFixed(1)} tok/s</span>}
+              <button
+                className={`ghost ${showSystem ? 'on' : ''}`}
+                onClick={() => setShowSystem((v) => !v)}
+                disabled={!h.activeConversation}
+                title="System prompt for this conversation"
+              >
+                system
+              </button>
+            </div>
+          </header>
+
+          {showSystem && h.activeConversation && (
+            <div className="system-panel">
+              <textarea
+                value={sysDraft}
+                onChange={(e) => onSystemChange(e.target.value)}
+                onBlur={flushSystem}
+                placeholder="System prompt for this conversation. Saved as you type."
+                rows={3}
+              />
+            </div>
+          )}
+
+          <Chat
+            messages={h.messages}
+            streaming={h.streaming}
+            onRegenerate={h.regenerate}
+            onEdit={h.editLast}
+          />
+
+          {h.error && <div className="error">{h.error}</div>}
+
+          <Composer streaming={h.streaming} onSend={h.send} onStop={h.stop} />
+        </main>
+      </div>
     </div>
   )
 }
