@@ -12,7 +12,24 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 
 ## Status
 
-Planning. No code yet — see [PLAN.md](PLAN.md).
+**v0.1 — phase 0 done.** Type, stream, stop. No persistence yet (refresh loses the thread) — that's phase 1.
+
+## Run it
+
+Two terminals:
+
+```bash
+# 1. the model
+cd "/c/AI/Llama Rocm"
+./llama-server.exe -m "C:/AI/Models/Gemma/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q6_K_P.gguf" \
+  --port 8088 -c 8192 -ngl 99 --jinja
+
+# 2. the app
+cd ~/Documents/Hermes/hearth/app
+npm run dev          # http://localhost:5173
+```
+
+Backend URL lives in `app/src/lib/config.ts`. If the model is still loading, the app shows a `503` error — wait a few seconds and send again.
 
 ## Backend (verified on this machine, 2026-11-11)
 
