@@ -11,8 +11,11 @@ type Prefs = {
   userName: string
   /** Reply budget. Reasoning models can spend all of it thinking. */
   maxTokens: number
-  /** Data URL, or empty for initials. */
+  /** Data URL or manager URL, or empty for initials. */
   userAvatar: string
+  /** The model's own identity, used when no profile is active. */
+  assistantName: string
+  assistantAvatar: string
   /** Whether the sidebar can be collapsed at all. */
   sidebarCollapsible: boolean
   sidebarCollapsed: boolean
@@ -25,6 +28,8 @@ const DEFAULTS: Prefs = {
   userName: 'User',
   maxTokens: 2048,
   userAvatar: '',
+  assistantName: 'Hearth',
+  assistantAvatar: '',
   sidebarCollapsible: true,
   sidebarCollapsed: false,
   layout: 'sidebar',

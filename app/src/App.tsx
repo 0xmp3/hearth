@@ -283,7 +283,10 @@ export default function App() {
             showReasoning={prefs.showReasoning}
             resolveIdentity={(personaId) => {
               const p = personas.resolve(personaId)
-              return { name: p?.name ?? 'Hearth', avatar: p?.avatar }
+              return {
+                name: p?.name ?? (prefs.assistantName || 'Hearth'),
+                avatar: p?.avatar ?? (prefs.assistantAvatar || undefined),
+              }
             }}
             user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
             onRegenerate={h.regenerate}
@@ -353,7 +356,13 @@ export default function App() {
           onSave={personas.save}
           onRemove={personas.remove}
           user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
-          onUserAvatar={(dataUrl) => updatePrefs({ userAvatar: dataUrl })}
+          onUserAvatar={(url) => updatePrefs({ userAvatar: url })}
+          assistant={{
+            name: prefs.assistantName || 'Hearth',
+            avatar: prefs.assistantAvatar || undefined,
+          }}
+          onAssistantName={(name) => updatePrefs({ assistantName: name })}
+          onAssistantAvatar={(url) => updatePrefs({ assistantAvatar: url })}
         />
       )}
 

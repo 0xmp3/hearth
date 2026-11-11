@@ -12,7 +12,10 @@ type Props = {
   onSave: (persona: Persona) => Promise<void>
   onRemove: (id: string) => Promise<void>
   user: { name: string; avatar?: string }
-  onUserAvatar: (dataUrl: string) => void
+  onUserAvatar: (url: string) => void
+  assistant: { name: string; avatar?: string }
+  onAssistantName: (name: string) => void
+  onAssistantAvatar: (url: string) => void
 }
 
 type Draft = {
@@ -37,10 +40,14 @@ export default function ProfileDialog({
   onRemove,
   user,
   onUserAvatar,
+  assistant,
+  onAssistantName,
+  onAssistantAvatar,
 }: Props) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const userFile = useRef<HTMLInputElement>(null)
+  const assistantFile = useRef<HTMLInputElement>(null)
   const personaFile = useRef<HTMLInputElement>(null)
 
   async function pickUserAvatar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -50,6 +57,19 @@ export default function ProfileDialog({
     try {
       const result = await uploadImage(file, 'avatar')
       onUserAvatar(result.url)
+      setError(null)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  async function pickAssistantAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const result = await uploadImage(file, 'avatar')
+      onAssistantAvatar(result.url)
       setError(null)
     } catch (err) {
       setError((err as Error).message)
@@ -90,6 +110,7 @@ export default function ProfileDialog({
       </p>
 
       <input ref={userFile} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickUserAvatar} />
+      <input ref={assistantFile} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickAssistantAvatar} />
       <input ref={personaFile} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPersonaAvatar} />
 
       <div className="you-row">
@@ -99,6 +120,20 @@ export default function ProfileDialog({
           <span className="persona-note">your picture, shown on your messages</span>
         </div>
         <button className="link" onClick={() => userFile.current?.click()}>change picture</button>
+      </div>
+
+      <div className="you-row">
+        <Avatar name={assistant.name} src={assistant.avatar} size={34} />
+        <div className="you-text">
+          <input
+            className="inline-name"
+            value={assistant.name}
+            onChange={(e) => onAssistantName(e.target.value)}
+            placeholder="Hearth"
+          />
+          <span className="persona-note">the model's picture, when no profile is active</span>
+        </div>
+        <button className="link" onClick={() => assistantFile.current?.click()}>change picture</button>
       </div>
 
       <ul className="persona-list">
