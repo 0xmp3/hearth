@@ -261,12 +261,14 @@
 
 /* ---------- messages ---------- */
 
-[data-chrome='win95'] .msg.user {
+[data-chrome='win95'] .msg.user .msg-main {
   background: var(--raised);
   border: 1px solid var(--bevel-lo);
   border-radius: 0;
   padding: 5px 8px;
 }
+
+[data-chrome='win95'] .avatar { border-radius: 0; }
 
 [data-chrome='win95'] .msg .body {
   font-size: 12px;

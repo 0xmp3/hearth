@@ -189,8 +189,8 @@ button, select, textarea { font: inherit; color: inherit; }
 }
 
 .chat-title {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 120px;
+  min-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -207,7 +207,8 @@ button, select, textarea { font: inherit; color: inherit; }
   padding: 4px 8px;
   font-size: 12px;
   color: var(--muted);
-  max-width: 340px;
+  max-width: 200px;
+  min-width: 0;
 }
 
 .model:hover { border-color: var(--faint); }
@@ -237,18 +238,41 @@ button, select, textarea { font: inherit; color: inherit; }
   margin: 0 0 6px;
 }
 
-.msg { display: flex; flex-direction: column; gap: 6px; }
+.msg { display: flex; gap: 10px; align-items: flex-start; }
+
+.msg.assistant { align-self: stretch; }
 
 .msg.user {
   align-self: flex-end;
-  max-width: 78%;
+  flex-direction: row-reverse;
+  max-width: 84%;
+}
+
+.msg-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.msg.assistant .msg-main { flex: 1; }
+
+.msg.user .msg-main {
   background: var(--raised);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 9px 13px;
 }
 
-.msg.assistant { align-self: stretch; }
+.avatar {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  flex: 0 0 auto;
+  user-select: none;
+}
 
 .msg .body {
   white-space: pre-wrap;
@@ -284,9 +308,12 @@ button, select, textarea { font: inherit; color: inherit; }
   font-size: 11px;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .dots { color: var(--faint); }
+
+.footnote.warn { color: var(--danger); }
 
 /* ---------- composer ---------- */
 
@@ -394,7 +421,8 @@ button.ghost.on { color: var(--accent); border-color: var(--accent); }
 .msg-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   min-height: 15px;
 }
 

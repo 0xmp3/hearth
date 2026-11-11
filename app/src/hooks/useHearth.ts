@@ -9,7 +9,11 @@ import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
 import type { ChatMessage, Stats } from '../lib/stream'
 
-export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
+export function useHearth(
+  turn: TurnDriver = chatTurn,
+  resolvePersona?: (personaId: string | null | undefined) => db.Persona | null,
+  maxTokens = 2048,
+) {
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<db.Message[]>([])
@@ -70,7 +74,8 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
   function buildHistory(msgs: db.Message[], conv: db.Conversation): ChatMessage[] {
     // Persona first (who you are), then the conversation's own prompt (what
     // this chat is about). Either can be empty.
-    const system = [personaPrompt?.trim(), conv.systemPrompt?.trim() || SYSTEM_PROMPT]
+    const persona = resolvePersona?.(conv.personaId)?.systemPrompt?.trim()
+    const system = [persona, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n')
     return [
@@ -101,6 +106,7 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
       await turn({
         model: conv.model || model,
         messages: history,
+        maxTokens,
         signal: controller.signal,
         append: (field, text) => {
           const draft = draftRef.current
@@ -111,9 +117,13 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
           scheduleSave()
         },
         onStats: (s) => {
-          setStats(s)
+          setStats((prev) => ({ ...prev, ...s }))
           if (draftRef.current) {
-            draftRef.current.stats = { ...s, model: conv.model || model }
+            draftRef.current.stats = {
+              ...(draftRef.current.stats ?? {}),
+              ...s,
+              model: conv.model || model,
+            }
           }
         },
       })
@@ -126,6 +136,11 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
       }
     } finally {
       const finished = draftRef.current
+      // A reasoning model can burn the entire budget thinking and emit no
+      // answer at all. Say so on the message instead of showing a blank reply.
+      if (finished && !finished.aborted && !finished.content.trim() && finished.reasoning) {
+        finished.truncated = true
+      }
       flushSave()
       // The draft is mutated directly (abort flag, final timings), so the last
       // setMessages never saw them. Push the finished copy through state or the
@@ -196,6 +211,16 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
     setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
   }
 
+  // The character belongs to the conversation, so switching it mid-thread only
+  // affects what comes next.
+  async function setConversationPersona(personaId: string | null) {
+    const conv = conversations.find((c) => c.id === activeId)
+    if (!conv) return
+    const updated = { ...conv, personaId }
+    await db.putConversation(updated)
+    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+  }
+
   async function setSystemPrompt(text: string) {
     const conv = conversations.find((c) => c.id === activeId)
     if (!conv) return
@@ -243,6 +268,7 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
       role: 'assistant',
       content: '',
       createdAt: now + 1,
+      personaId: resolvePersona?.(conv.personaId)?.id ?? null,
     }
 
     const next = [...messages, userMsg]
@@ -270,6 +296,7 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
       role: 'assistant',
       content: '',
       createdAt: Date.now(),
+      personaId: resolvePersona?.(conv.personaId)?.id ?? null,
     }
 
     setMessages([...kept, assistantMsg])
@@ -302,6 +329,7 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
       role: 'assistant',
       content: '',
       createdAt: Date.now(),
+      personaId: resolvePersona?.(conv.personaId)?.id ?? null,
     }
 
     setMessages([...kept, assistantMsg])
@@ -379,6 +407,7 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
     model,
     setModel: changeModel,
     setSystemPrompt,
+    setConversationPersona,
     streaming,
     stats,
     error,

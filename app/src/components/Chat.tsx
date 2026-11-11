@@ -6,11 +6,21 @@ type Props = {
   messages: Msg[]
   streaming: boolean
   showReasoning: boolean
+  resolveName: (personaId?: string | null) => string
+  userName: string
   onRegenerate: () => void
   onEdit: (text: string) => void
 }
 
-export default function Chat({ messages, streaming, showReasoning, onRegenerate, onEdit }: Props) {
+export default function Chat({
+  messages,
+  streaming,
+  showReasoning,
+  resolveName,
+  userName,
+  onRegenerate,
+  onEdit,
+}: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
 
@@ -48,6 +58,8 @@ export default function Chat({ messages, streaming, showReasoning, onRegenerate,
             message={m}
             streaming={streaming}
             showReasoning={showReasoning}
+            resolveName={resolveName}
+            userName={userName}
             isLast={i === messages.length - 1}
             isLastUser={i === lastUserIdx}
             onRegenerate={onRegenerate}

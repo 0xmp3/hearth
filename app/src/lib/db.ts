@@ -10,6 +10,12 @@ export type Conversation = {
   systemPrompt?: string
   /** Set when pinned; pinned conversations sort above the rest. */
   pinnedAt?: number
+  /**
+   * The character this conversation speaks as.
+   * `undefined` = inherit the globally active profile (older conversations).
+   * `null` = explicitly no character.
+   */
+  personaId?: string | null
 }
 
 export type Message = {
@@ -20,6 +26,10 @@ export type Message = {
   reasoning?: string
   createdAt: number
   aborted?: boolean
+  /** The character that produced this reply, so history stays accurate. */
+  personaId?: string | null
+  /** The budget ran out before any answer was produced. */
+  truncated?: boolean
   stats?: {
     tokPerSec?: number
     promptTokPerSec?: number
@@ -33,7 +43,7 @@ export type Message = {
 }
 
 const DB_NAME = 'hearth'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 let handle: Promise<IDBDatabase> | null = null
 
@@ -53,6 +63,10 @@ function open(): Promise<IDBDatabase> {
       // v2. Guarded so an upgrade from v1 adds it without touching the rest.
       if (!db.objectStoreNames.contains('personas')) {
         db.createObjectStore('personas', { keyPath: 'id' })
+      }
+      // v3.
+      if (!db.objectStoreNames.contains('prompts')) {
+        db.createObjectStore('prompts', { keyPath: 'id' })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -175,27 +189,37 @@ export type Persona = {
   createdAt: number
 }
 
+export type Prompt = {
+  id: string
+  name: string
+  text: string
+  createdAt: number
+}
+
 export type Backup = {
   format: 'hearth-backup'
-  version: 2
+  version: 3
   exportedAt: string
   conversations: Conversation[]
   messages: Message[]
   personas: Persona[]
+  prompts: Prompt[]
 }
 
 export function makeBackup(
   conversations: Conversation[],
   messages: Message[],
   personas: Persona[] = [],
+  prompts: Prompt[] = [],
 ): Backup {
   return {
     format: 'hearth-backup',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     conversations,
     messages,
     personas,
+    prompts,
   }
 }
 
@@ -209,13 +233,14 @@ export async function exportAll(): Promise<Backup> {
       req.onerror = () => reject(req.error)
     })
 
-  const [conversations, messages, personas] = await Promise.all([
+  const [conversations, messages, personas, prompts] = await Promise.all([
     read<Conversation>('conversations'),
     read<Message>('messages'),
     read<Persona>('personas'),
+    read<Prompt>('prompts'),
   ])
 
-  return makeBackup(conversations, messages, personas)
+  return makeBackup(conversations, messages, personas, prompts)
 }
 
 // Merge, never replace: restoring into an empty database brings everything
@@ -224,23 +249,30 @@ export async function exportAll(): Promise<Backup> {
 export async function importAll(
   backup: Backup,
   only?: string[],
-): Promise<{ conversations: number; messages: number; personas: number }> {
+): Promise<{ conversations: number; messages: number; personas: number; prompts: number }> {
   const conversations = only ? backup.conversations.filter((c) => only.includes(c.id)) : backup.conversations
   const ids = new Set(conversations.map((c) => c.id))
   const messages = backup.messages.filter((m) => ids.has(m.conversationId))
   const personas = backup.personas ?? []
+  const prompts = backup.prompts ?? []
 
   const db = await open()
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'messages', 'personas'], 'readwrite')
+    const t = db.transaction(['conversations', 'messages', 'personas', 'prompts'], 'readwrite')
     for (const c of conversations) t.objectStore('conversations').put(c)
     for (const m of messages) t.objectStore('messages').put(m)
     for (const p of personas) t.objectStore('personas').put(p)
+    for (const p of prompts) t.objectStore('prompts').put(p)
     t.oncomplete = () => resolve()
     t.onerror = () => reject(t.error)
   })
 
-  return { conversations: conversations.length, messages: messages.length, personas: personas.length }
+  return {
+    conversations: conversations.length,
+    messages: messages.length,
+    personas: personas.length,
+    prompts: prompts.length,
+  }
 }
 
 export type StatPoint = {
@@ -300,6 +332,19 @@ export function putPersona(p: Persona): Promise<IDBValidKey> {
 
 export async function deletePersona(id: string): Promise<void> {
   await tx('personas', 'readwrite', (s) => s.delete(id))
+}
+
+export async function listPrompts(): Promise<Prompt[]> {
+  const all = await tx<Prompt[]>('prompts', 'readonly', (s) => s.getAll())
+  return all.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function putPrompt(p: Prompt): Promise<IDBValidKey> {
+  return tx('prompts', 'readwrite', (s) => s.put(p))
+}
+
+export async function deletePrompt(id: string): Promise<void> {
+  await tx('prompts', 'readwrite', (s) => s.delete(id))
 }
 
 export function newId(): string {

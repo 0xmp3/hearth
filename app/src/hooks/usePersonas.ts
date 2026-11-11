@@ -22,6 +22,17 @@ export function usePersonas() {
 
   const active = personas.find((p) => p.id === activeId) ?? null
 
+  /**
+   * Which character a conversation speaks as.
+   * `undefined` inherits the globally active profile (older conversations),
+   * `null` means explicitly none, a string picks that profile.
+   */
+  function resolve(personaId: string | null | undefined): db.Persona | null {
+    if (personaId === null) return null
+    if (personaId === undefined) return active
+    return personas.find((p) => p.id === personaId) ?? null
+  }
+
   function select(id: string | null) {
     setActiveId(id)
     try {
@@ -46,5 +57,5 @@ export function usePersonas() {
     if (activeId === id) select(null)
   }
 
-  return { personas, active, activeId, select, save, remove }
+  return { personas, active, activeId, select, save, remove, resolve }
 }

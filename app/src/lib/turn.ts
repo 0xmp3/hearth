@@ -11,6 +11,7 @@ import { BASE_URL } from './config'
 export type TurnContext = {
   model: string
   messages: ChatMessage[]
+  maxTokens: number
   signal: AbortSignal
   append: (field: 'content' | 'reasoning', text: string) => void
   onStats: (stats: Stats) => void
@@ -23,6 +24,7 @@ export const chatTurn: TurnDriver = async (ctx) => {
     baseUrl: BASE_URL,
     model: ctx.model,
     messages: ctx.messages,
+    maxTokens: ctx.maxTokens,
     signal: ctx.signal,
     onDelta: (text) => ctx.append('content', text),
     onReasoning: (text) => ctx.append('reasoning', text),

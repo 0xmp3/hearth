@@ -12,6 +12,8 @@ export type Stats = {
   cacheN?: number
   /** Milliseconds from request to first token. */
   ttftMs?: number
+  /** 'stop' | 'length' | ... — 'length' means the budget ran out. */
+  finishReason?: string
 }
 
 export type ChatMessage = {
@@ -24,6 +26,7 @@ export type StreamOptions = {
   baseUrl: string
   model: string
   messages: ChatMessage[]
+  maxTokens: number
   signal: AbortSignal
   onDelta: (text: string) => void
   onReasoning?: (text: string) => void
@@ -42,7 +45,7 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
       model: opts.model,
       messages: opts.messages.map(({ role, content }) => ({ role, content })),
       stream: true,
-      max_tokens: MAX_TOKENS,
+      max_tokens: opts.maxTokens,
     }),
   })
 
@@ -91,6 +94,11 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
         if (delta?.content) {
           if (firstTokenAt === null) firstTokenAt = performance.now()
           opts.onDelta(delta.content)
+        }
+
+        const finish = chunk.choices?.[0]?.finish_reason
+        if (finish && opts.onStats) {
+          opts.onStats({ finishReason: finish })
         }
 
         if (chunk.timings && opts.onStats) {

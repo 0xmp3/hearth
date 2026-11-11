@@ -7,9 +7,13 @@ const KEY = 'hearth.prefs'
 
 type Prefs = {
   showReasoning: boolean
+  /** Shown on your own messages. Initials only — no image pipeline yet. */
+  userName: string
+  /** Reply budget. Reasoning models can spend all of it thinking. */
+  maxTokens: number
 }
 
-const DEFAULTS: Prefs = { showReasoning: true }
+const DEFAULTS: Prefs = { showReasoning: true, userName: 'You', maxTokens: 2048 }
 
 function load(): Prefs {
   try {

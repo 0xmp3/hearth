@@ -14,6 +14,10 @@ type Props = {
   onTheme: (id: string) => void
   showReasoning: boolean
   onShowReasoning: (value: boolean) => void
+  userName: string
+  onUserName: (value: string) => void
+  maxTokens: number
+  onMaxTokens: (value: number) => void
 }
 
 export default function SettingsDialog({
@@ -29,6 +33,10 @@ export default function SettingsDialog({
   onTheme,
   showReasoning,
   onShowReasoning,
+  userName,
+  onUserName,
+  maxTokens,
+  onMaxTokens,
 }: Props) {
   return (
     <Dialog
@@ -44,6 +52,25 @@ export default function SettingsDialog({
             {themes.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Your name</span>
+          <input
+            value={userName}
+            onChange={(e) => onUserName(e.target.value)}
+            placeholder="You"
+          />
+        </label>
+
+        <label className="field">
+          <span>Reply budget</span>
+          <select value={maxTokens} onChange={(e) => onMaxTokens(Number(e.target.value))}>
+            <option value={1024}>1024 tokens</option>
+            <option value={2048}>2048 tokens</option>
+            <option value={4096}>4096 tokens</option>
+            <option value={8192}>8192 tokens</option>
           </select>
         </label>
 

@@ -8,9 +8,11 @@ import ProfileDialog from './components/ProfileDialog'
 import ExportDialog from './components/ExportDialog'
 import RestoreDialog from './components/RestoreDialog'
 import StatsDialog from './components/StatsDialog'
+import PromptsDialog from './components/PromptsDialog'
 import { useHearth } from './hooks/useHearth'
 import { usePersonas } from './hooks/usePersonas'
 import { usePrefs } from './hooks/usePrefs'
+import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
 import { chatTurn } from './lib/turn'
@@ -18,13 +20,14 @@ import { countMessages, exportAll, importAll, listMessages, searchMessages, type
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
 
-type DialogName = 'settings' | 'profile' | 'export' | 'restore' | 'stats'
+type DialogName = 'settings' | 'profile' | 'export' | 'restore' | 'stats' | 'prompts'
 
 export default function App() {
   const personas = usePersonas()
-  const h = useHearth(chatTurn, personas.active?.systemPrompt)
-  const t = useTheme()
+  const prompts = usePrompts()
   const { prefs, update: updatePrefs } = usePrefs()
+  const h = useHearth(chatTurn, (personaId) => personas.resolve(personaId), prefs.maxTokens)
+  const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -102,6 +105,13 @@ export default function App() {
 
   // Context usage comes from the last reply's own token counts, so it is
   // measured rather than estimated.
+  // undefined inherits the globally active profile; null means none.
+  const characterValue = h.activeConversation
+    ? h.activeConversation.personaId === null
+      ? ''
+      : (h.activeConversation.personaId ?? personas.activeId ?? '')
+    : (personas.activeId ?? '')
+
   const ctxTotal = h.models.find((m) => m.id === h.model)?.ctx ?? 8192
   const lastStats = [...h.messages].reverse().find((m) => m.stats?.promptTokens)?.stats
   const ctxUsed = lastStats ? (lastStats.promptTokens ?? 0) + (lastStats.completionTokens ?? 0) : 0
@@ -139,6 +149,7 @@ export default function App() {
       : []),
     { id: 'export', label: 'Export…', hint: 'all or one', run: () => setDialog('export') },
     { id: 'restore', label: 'Restore…', hint: 'from a backup file', run: () => setDialog('restore') },
+    { id: 'prompts', label: 'Prompt library', run: () => setDialog('prompts') },
     { id: 'stats', label: 'Stats', hint: 'speed history', run: () => setDialog('stats') },
     { id: 'settings', label: 'Settings', run: () => setDialog('settings') },
     { id: 'profile', label: 'Profiles', run: () => setDialog('profile') },
@@ -190,6 +201,21 @@ export default function App() {
               ))}
             </select>
 
+            {personas.personas.length > 0 && (
+              <select
+                className="model character"
+                value={characterValue}
+                onChange={(e) => void h.setConversationPersona(e.target.value === '' ? null : e.target.value)}
+                disabled={h.streaming || !h.activeConversation}
+                title="Character for this conversation"
+              >
+                <option value="">no character</option>
+                {personas.personas.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+
             <div className="topbar-right">
               {h.stats?.tokPerSec && (
                 <button className="link tok" onClick={() => setDialog('stats')} title="Speed history">
@@ -216,6 +242,12 @@ export default function App() {
                 placeholder="System prompt for this conversation. Saved as you type."
                 rows={3}
               />
+              <div className="row between">
+                <button className="link" onClick={() => setDialog('prompts')}>
+                  prompt library
+                </button>
+                <span className="hint">saved as you type</span>
+              </div>
             </div>
           )}
 
@@ -223,6 +255,8 @@ export default function App() {
             messages={h.messages}
             streaming={h.streaming}
             showReasoning={prefs.showReasoning}
+            resolveName={(personaId) => personas.resolve(personaId)?.name ?? 'Hearth'}
+            userName={prefs.userName || 'You'}
             onRegenerate={h.regenerate}
             onEdit={h.editLast}
           />
@@ -267,6 +301,10 @@ export default function App() {
           onTheme={t.setTheme}
           showReasoning={prefs.showReasoning}
           onShowReasoning={(value) => updatePrefs({ showReasoning: value })}
+          userName={prefs.userName}
+          onUserName={(value) => updatePrefs({ userName: value })}
+          maxTokens={prefs.maxTokens}
+          onMaxTokens={(value) => updatePrefs({ maxTokens: value })}
         />
       )}
 
@@ -295,6 +333,21 @@ export default function App() {
       )}
 
       {dialog === 'stats' && <StatsDialog onClose={() => setDialog(null)} />}
+
+      {dialog === 'prompts' && (
+        <PromptsDialog
+          onClose={() => setDialog(null)}
+          prompts={prompts.prompts}
+          onSave={prompts.save}
+          onRemove={prompts.remove}
+          canUse={Boolean(h.activeConversation)}
+          onUse={(text) => {
+            setSysDraft(text)
+            sysRef.current = text
+            void h.setSystemPrompt(text)
+          }}
+        />
+      )}
 
       {confirmDelete && (
         <Dialog
