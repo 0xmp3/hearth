@@ -20,7 +20,16 @@ export type Message = {
   reasoning?: string
   createdAt: number
   aborted?: boolean
-  stats?: { tokPerSec?: number; completionTokens?: number }
+  stats?: {
+    tokPerSec?: number
+    promptTokPerSec?: number
+    completionTokens?: number
+    promptTokens?: number
+    cacheN?: number
+    ttftMs?: number
+    /** Recorded per reply: a conversation can switch models mid-thread. */
+    model?: string
+  }
 }
 
 const DB_NAME = 'hearth'
@@ -232,6 +241,42 @@ export async function importAll(
   })
 
   return { conversations: conversations.length, messages: messages.length, personas: personas.length }
+}
+
+export type StatPoint = {
+  model: string
+  tokPerSec: number
+  promptTokPerSec?: number
+  ttftMs?: number
+  completionTokens?: number
+  promptTokens?: number
+  cacheN?: number
+  createdAt: number
+}
+
+// Only the numbers, not the text: the graph never needs message bodies.
+export async function listStatPoints(): Promise<StatPoint[]> {
+  const db = await open()
+  const all = await new Promise<Message[]>((resolve, reject) => {
+    const t = db.transaction('messages', 'readonly')
+    const req = t.objectStore('messages').getAll()
+    req.onsuccess = () => resolve(req.result as Message[])
+    req.onerror = () => reject(req.error)
+  })
+
+  return all
+    .filter((m) => m.stats?.tokPerSec)
+    .map((m) => ({
+      model: m.stats!.model ?? 'unknown',
+      tokPerSec: m.stats!.tokPerSec!,
+      promptTokPerSec: m.stats!.promptTokPerSec,
+      ttftMs: m.stats!.ttftMs,
+      completionTokens: m.stats!.completionTokens,
+      promptTokens: m.stats!.promptTokens,
+      cacheN: m.stats!.cacheN,
+      createdAt: m.createdAt,
+    }))
+    .sort((a, b) => a.createdAt - b.createdAt)
 }
 
 export async function countMessages(): Promise<number> {

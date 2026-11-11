@@ -1,12 +1,16 @@
 import { useRef, useState } from 'react'
 
+import ContextBar from './ContextBar'
+
 type Props = {
   streaming: boolean
+  used: number
+  total: number
   onSend: (text: string) => void
   onStop: () => void
 }
 
-export default function Composer({ streaming, onSend, onStop }: Props) {
+export default function Composer({ streaming, used, total, onSend, onStop }: Props) {
   const [value, setValue] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -30,12 +34,12 @@ export default function Composer({ streaming, onSend, onStop }: Props) {
             submit()
           }
         }}
-        placeholder="Message…"
+        placeholder="Message…  (Enter to send, Shift+Enter for a newline)"
         rows={2}
         autoFocus
       />
       <div className="composer-row">
-        <span className="hint">Enter to send · Shift+Enter for a newline</span>
+        <ContextBar used={used} total={total} />
         {streaming ? (
           <button className="stop" onClick={onStop}>Stop</button>
         ) : (

@@ -522,6 +522,69 @@ button.link:hover { color: var(--accent); }
 
 .code-wrap:hover .copy { opacity: 1; }
 
+/* ---------- context bar ---------- */
+
+.ctx { display: flex; align-items: center; gap: 8px; }
+
+.ctx-track {
+  width: 90px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.ctx-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
+.ctx.hot .ctx-fill { background: var(--danger); }
+
+.ctx-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+button.link.tok { font-family: var(--font-mono); font-size: 11px; }
+
+/* ---------- stats ---------- */
+
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.stat-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.stat-model { font-size: 13px; font-weight: 500; }
+
+.spark { width: 100%; height: 40px; display: block; }
+.spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.spark-empty { color: var(--faint); font-size: 11.5px; }
+
+.stat-grid { display: flex; gap: 20px; flex-wrap: wrap; }
+.stat-grid > div { display: flex; flex-direction: column; gap: 1px; }
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-size: 10.5px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 /* ---------- dialogs ---------- */
 
 .dialog-backdrop {

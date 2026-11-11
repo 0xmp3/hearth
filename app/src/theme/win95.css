@@ -328,6 +328,20 @@
   border: 1px solid var(--bevel-lo);
 }
 
+/* ---------- context bar and stats ---------- */
+
+[data-chrome='win95'] .ctx-track {
+  border-radius: 0;
+  height: 8px;
+  background: var(--field);
+  border: 1px solid;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+
+[data-chrome='win95'] .ctx-fill { background: var(--accent); }
+[data-chrome='win95'] .spark polyline { stroke: var(--accent); }
+[data-chrome='win95'] .stat-block { border-top: 1px solid var(--bevel-lo); }
+
 /* ---------- dialogs ---------- */
 
 [data-chrome='win95'] .dialog {

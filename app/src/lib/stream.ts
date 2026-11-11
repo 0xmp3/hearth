@@ -7,6 +7,11 @@ export type Stats = {
   tokPerSec?: number
   promptTokPerSec?: number
   completionTokens?: number
+  promptTokens?: number
+  /** Tokens served from the prompt cache — high means the prefix is reused. */
+  cacheN?: number
+  /** Milliseconds from request to first token. */
+  ttftMs?: number
 }
 
 export type ChatMessage = {
@@ -26,6 +31,9 @@ export type StreamOptions = {
 }
 
 export async function streamChat(opts: StreamOptions): Promise<void> {
+  const startedAt = performance.now()
+  let firstTokenAt: number | null = null
+
   const res = await fetch(`${opts.baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -76,14 +84,23 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
         const delta = chunk.choices?.[0]?.delta
         // Reasoning models stream thinking in a separate field. Dropping it
         // makes the app look frozen until the answer starts.
-        if (delta?.reasoning_content) opts.onReasoning?.(delta.reasoning_content)
-        if (delta?.content) opts.onDelta(delta.content)
+        if (delta?.reasoning_content) {
+          if (firstTokenAt === null) firstTokenAt = performance.now()
+          opts.onReasoning?.(delta.reasoning_content)
+        }
+        if (delta?.content) {
+          if (firstTokenAt === null) firstTokenAt = performance.now()
+          opts.onDelta(delta.content)
+        }
 
         if (chunk.timings && opts.onStats) {
           opts.onStats({
             tokPerSec: chunk.timings.predicted_per_second,
             promptTokPerSec: chunk.timings.prompt_per_second,
             completionTokens: chunk.timings.predicted_n,
+            promptTokens: chunk.timings.prompt_n,
+            cacheN: chunk.timings.cache_n,
+            ttftMs: firstTokenAt === null ? undefined : Math.round(firstTokenAt - startedAt),
           })
         }
       }

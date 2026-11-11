@@ -113,7 +113,7 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
         onStats: (s) => {
           setStats(s)
           if (draftRef.current) {
-            draftRef.current.stats = { tokPerSec: s.tokPerSec, completionTokens: s.completionTokens }
+            draftRef.current.stats = { ...s, model: conv.model || model }
           }
         },
       })
@@ -127,9 +127,10 @@ export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
     } finally {
       const finished = draftRef.current
       flushSave()
-      // The abort flag is set on the draft object, not through setMessages,
-      // so without this the "stopped" marker only appeared after a reload.
-      if (finished?.aborted) {
+      // The draft is mutated directly (abort flag, final timings), so the last
+      // setMessages never saw them. Push the finished copy through state or the
+      // "stopped" marker and the token counts only appear after a reload.
+      if (finished) {
         setMessages((prev) => prev.map((m) => (m.id === finished.id ? { ...finished } : m)))
       }
       if (finished?.content.trim()) void maybeTitle(conv, history, finished.content)

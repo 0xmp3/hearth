@@ -7,6 +7,7 @@ import SettingsDialog from './components/SettingsDialog'
 import ProfileDialog from './components/ProfileDialog'
 import ExportDialog from './components/ExportDialog'
 import RestoreDialog from './components/RestoreDialog'
+import StatsDialog from './components/StatsDialog'
 import { useHearth } from './hooks/useHearth'
 import { usePersonas } from './hooks/usePersonas'
 import { usePrefs } from './hooks/usePrefs'
@@ -17,7 +18,7 @@ import { countMessages, exportAll, importAll, listMessages, searchMessages, type
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
 
-type DialogName = 'settings' | 'profile' | 'export' | 'restore'
+type DialogName = 'settings' | 'profile' | 'export' | 'restore' | 'stats'
 
 export default function App() {
   const personas = usePersonas()
@@ -99,6 +100,12 @@ export default function App() {
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
+  // Context usage comes from the last reply's own token counts, so it is
+  // measured rather than estimated.
+  const ctxTotal = h.models.find((m) => m.id === h.model)?.ctx ?? 8192
+  const lastStats = [...h.messages].reverse().find((m) => m.stats?.promptTokens)?.stats
+  const ctxUsed = lastStats ? (lastStats.promptTokens ?? 0) + (lastStats.completionTokens ?? 0) : 0
+
   async function exportScope(scope: 'all' | string) {
     if (scope === 'all') {
       const backup = await exportAll()
@@ -132,6 +139,7 @@ export default function App() {
       : []),
     { id: 'export', label: 'Export…', hint: 'all or one', run: () => setDialog('export') },
     { id: 'restore', label: 'Restore…', hint: 'from a backup file', run: () => setDialog('restore') },
+    { id: 'stats', label: 'Stats', hint: 'speed history', run: () => setDialog('stats') },
     { id: 'settings', label: 'Settings', run: () => setDialog('settings') },
     { id: 'profile', label: 'Profiles', run: () => setDialog('profile') },
     { id: 'system', label: 'Toggle system prompt', run: () => setShowSystem((v) => !v) },
@@ -183,7 +191,11 @@ export default function App() {
             </select>
 
             <div className="topbar-right">
-              {h.stats?.tokPerSec && <span className="hint">{h.stats.tokPerSec.toFixed(1)} tok/s</span>}
+              {h.stats?.tokPerSec && (
+                <button className="link tok" onClick={() => setDialog('stats')} title="Speed history">
+                  {h.stats.tokPerSec.toFixed(1)} tok/s
+                </button>
+              )}
               <button
                 className={`ghost ${showSystem ? 'on' : ''}`}
                 onClick={() => setShowSystem((v) => !v)}
@@ -222,7 +234,13 @@ export default function App() {
             </div>
           )}
 
-          <Composer streaming={h.streaming} onSend={h.send} onStop={h.stop} />
+          <Composer
+            streaming={h.streaming}
+            used={ctxUsed}
+            total={ctxTotal}
+            onSend={h.send}
+            onStop={h.stop}
+          />
         </main>
       </div>
 
@@ -275,6 +293,8 @@ export default function App() {
       {dialog === 'restore' && (
         <RestoreDialog onClose={() => setDialog(null)} onRestore={restore} />
       )}
+
+      {dialog === 'stats' && <StatsDialog onClose={() => setDialog(null)} />}
 
       {confirmDelete && (
         <Dialog
