@@ -22,7 +22,7 @@ export type Message = {
 }
 
 const DB_NAME = 'hearth'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 let handle: Promise<IDBDatabase> | null = null
 
@@ -38,6 +38,10 @@ function open(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('messages')) {
         const store = db.createObjectStore('messages', { keyPath: 'id' })
         store.createIndex('conversationId', 'conversationId')
+      }
+      // v2. Guarded so an upgrade from v1 adds it without touching the rest.
+      if (!db.objectStoreNames.contains('personas')) {
+        db.createObjectStore('personas', { keyPath: 'id' })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -143,21 +147,37 @@ export async function searchMessages(query: string, limit = 20): Promise<SearchH
   return hits.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit)
 }
 
+export type Persona = {
+  id: string
+  name: string
+  /** One line about who this is, shown in the picker. */
+  note?: string
+  /** Prepended to every conversation's system prompt while active. */
+  systemPrompt?: string
+  createdAt: number
+}
+
 export type Backup = {
   format: 'hearth-backup'
-  version: 1
+  version: 2
   exportedAt: string
   conversations: Conversation[]
   messages: Message[]
+  personas: Persona[]
 }
 
-export function makeBackup(conversations: Conversation[], messages: Message[]): Backup {
+export function makeBackup(
+  conversations: Conversation[],
+  messages: Message[],
+  personas: Persona[] = [],
+): Backup {
   return {
     format: 'hearth-backup',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     conversations,
     messages,
+    personas,
   }
 }
 
@@ -171,27 +191,61 @@ export async function exportAll(): Promise<Backup> {
       req.onerror = () => reject(req.error)
     })
 
-  const [conversations, messages] = await Promise.all([
+  const [conversations, messages, personas] = await Promise.all([
     read<Conversation>('conversations'),
     read<Message>('messages'),
+    read<Persona>('personas'),
   ])
 
-  return makeBackup(conversations, messages)
+  return makeBackup(conversations, messages, personas)
 }
 
 // Merge, never replace: restoring into an empty database brings everything
 // back, and restoring into a populated one overwrites by id instead of
 // destroying whatever else is there.
-export async function importAll(backup: Backup): Promise<{ conversations: number; messages: number }> {
+export async function importAll(
+  backup: Backup,
+  only?: string[],
+): Promise<{ conversations: number; messages: number; personas: number }> {
+  const conversations = only ? backup.conversations.filter((c) => only.includes(c.id)) : backup.conversations
+  const ids = new Set(conversations.map((c) => c.id))
+  const messages = backup.messages.filter((m) => ids.has(m.conversationId))
+  const personas = backup.personas ?? []
+
   const db = await open()
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'messages'], 'readwrite')
-    for (const c of backup.conversations) t.objectStore('conversations').put(c)
-    for (const m of backup.messages) t.objectStore('messages').put(m)
+    const t = db.transaction(['conversations', 'messages', 'personas'], 'readwrite')
+    for (const c of conversations) t.objectStore('conversations').put(c)
+    for (const m of messages) t.objectStore('messages').put(m)
+    for (const p of personas) t.objectStore('personas').put(p)
     t.oncomplete = () => resolve()
     t.onerror = () => reject(t.error)
   })
-  return { conversations: backup.conversations.length, messages: backup.messages.length }
+
+  return { conversations: conversations.length, messages: messages.length, personas: personas.length }
+}
+
+export async function countMessages(): Promise<number> {
+  const db = await open()
+  return new Promise((resolve, reject) => {
+    const t = db.transaction('messages', 'readonly')
+    const req = t.objectStore('messages').count()
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+export async function listPersonas(): Promise<Persona[]> {
+  const all = await tx<Persona[]>('personas', 'readonly', (s) => s.getAll())
+  return all.sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export function putPersona(p: Persona): Promise<IDBValidKey> {
+  return tx('personas', 'readwrite', (s) => s.put(p))
+}
+
+export async function deletePersona(id: string): Promise<void> {
+  await tx('personas', 'readwrite', (s) => s.delete(id))
 }
 
 export function newId(): string {

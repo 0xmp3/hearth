@@ -8,7 +8,7 @@ import { chatTurn, type TurnDriver } from '../lib/turn'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import type { ChatMessage, Stats } from '../lib/stream'
 
-export function useHearth(turn: TurnDriver = chatTurn) {
+export function useHearth(turn: TurnDriver = chatTurn, personaPrompt?: string) {
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<db.Message[]>([])
@@ -67,7 +67,11 @@ export function useHearth(turn: TurnDriver = chatTurn) {
 
   // ---- helpers ----------------------------------------------------------
   function buildHistory(msgs: db.Message[], conv: db.Conversation): ChatMessage[] {
-    const system = conv.systemPrompt?.trim() || SYSTEM_PROMPT
+    // Persona first (who you are), then the conversation's own prompt (what
+    // this chat is about). Either can be empty.
+    const system = [personaPrompt?.trim(), conv.systemPrompt?.trim() || SYSTEM_PROMPT]
+      .filter(Boolean)
+      .join('\n\n')
     return [
       ...(system ? [{ role: 'system' as const, content: system }] : []),
       // An assistant turn that produced no text (thinking ate the budget, or

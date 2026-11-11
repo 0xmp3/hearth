@@ -12,7 +12,7 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 
 ## Status
 
-**v1.1 — phase 3 done.** Markdown, regenerate, edit-and-resend, per-conversation system prompt, five swappable themes (Hearth, Parchment, Slate, Hearth 98 light and dark), `Ctrl+K` palette with message search, Markdown/JSON export, and backup/restore — whole library or a single chat (the `backup` / `restore` links at the bottom of the sidebar, or the palette). Local only: no remote, nothing leaves this machine.
+**v1.1 — phase 3 done.** Markdown, regenerate, edit-and-resend, per-conversation system prompt, five swappable themes (Hearth, Parchment, Slate, Hearth 98 light and dark), `Ctrl+K` palette with message search, Markdown/JSON export, settings and profiles dialogs, and scoped export/restore — whole library or a single chat, chosen in a dialog. Local only: no remote, nothing leaves this machine.
 
 ## Run it
 

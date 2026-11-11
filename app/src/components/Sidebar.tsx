@@ -7,11 +7,9 @@ type Props = {
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
-  themeId: string
-  themes: { id: string; name: string }[]
-  onTheme: (id: string) => void
-  onBackup: () => void
-  onRestore: () => void
+  onSettings: () => void
+  onProfile: () => void
+  profileName: string | null
 }
 
 export default function Sidebar({
@@ -21,11 +19,9 @@ export default function Sidebar({
   onSelect,
   onCreate,
   onDelete,
-  themeId,
-  themes,
-  onTheme,
-  onBackup,
-  onRestore,
+  onSettings,
+  onProfile,
+  profileName,
 }: Props) {
   return (
     <aside className="sidebar">
@@ -61,25 +57,14 @@ export default function Sidebar({
       </nav>
 
       <div className="sidebar-foot">
-        <select
-          className="theme-select"
-          value={themeId}
-          onChange={(e) => onTheme(e.target.value)}
-          title="Theme"
-        >
-          {themes.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
-
-        <div className="foot-actions">
-          <button className="foot-link" onClick={onBackup} title="Save every conversation to a JSON file">
-            backup
-          </button>
-          <button className="foot-link" onClick={onRestore} title="Restore conversations from a backup file">
-            restore
-          </button>
-        </div>
+        <button className="foot-btn" onClick={onProfile} title="Profiles">
+          <span className="foot-label">profile</span>
+          <span className="foot-value">{profileName ?? 'none'}</span>
+        </button>
+        <button className="foot-btn" onClick={onSettings} title="Settings">
+          <span className="foot-label">settings</span>
+          <span className="foot-value">⚙</span>
+        </button>
       </div>
     </aside>
   )
