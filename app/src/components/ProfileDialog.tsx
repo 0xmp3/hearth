@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Dialog from './Dialog'
+import Avatar from './Avatar'
 import { newId, type Persona } from '../lib/db'
+import { toAvatarDataUrl } from '../lib/image'
 
 type Props = {
   onClose: () => void
@@ -9,16 +11,61 @@ type Props = {
   onSelect: (id: string | null) => void
   onSave: (persona: Persona) => Promise<void>
   onRemove: (id: string) => Promise<void>
+  user: { name: string; avatar?: string }
+  onUserAvatar: (dataUrl: string) => void
 }
 
-type Draft = { id: string; name: string; note: string; systemPrompt: string; createdAt: number }
+type Draft = {
+  id: string
+  name: string
+  note: string
+  systemPrompt: string
+  avatar?: string
+  createdAt: number
+}
 
 function blank(): Draft {
   return { id: newId(), name: '', note: '', systemPrompt: '', createdAt: Date.now() }
 }
 
-export default function ProfileDialog({ onClose, personas, activeId, onSelect, onSave, onRemove }: Props) {
+export default function ProfileDialog({
+  onClose,
+  personas,
+  activeId,
+  onSelect,
+  onSave,
+  onRemove,
+  user,
+  onUserAvatar,
+}: Props) {
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const userFile = useRef<HTMLInputElement>(null)
+  const personaFile = useRef<HTMLInputElement>(null)
+
+  async function pickUserAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      onUserAvatar(await toAvatarDataUrl(file))
+      setError(null)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  async function pickPersonaAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !draft) return
+    try {
+      setDraft({ ...draft, avatar: await toAvatarDataUrl(file) })
+      setError(null)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
 
   async function save() {
     if (!draft || !draft.name.trim()) return
@@ -27,21 +74,30 @@ export default function ProfileDialog({ onClose, personas, activeId, onSelect, o
       name: draft.name.trim(),
       note: draft.note.trim() || undefined,
       systemPrompt: draft.systemPrompt.trim() || undefined,
+      avatar: draft.avatar,
       createdAt: draft.createdAt,
     })
     setDraft(null)
   }
 
   return (
-    <Dialog
-      title="Profiles"
-      onClose={onClose}
-      footer={<button onClick={onClose}>Done</button>}
-    >
+    <Dialog title="Profiles" onClose={onClose} footer={<button onClick={onClose}>Done</button>}>
       <p className="hint">
         A profile is who the model is talking to. Its prompt is added to every
         conversation while it is active.
       </p>
+
+      <input ref={userFile} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickUserAvatar} />
+      <input ref={personaFile} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPersonaAvatar} />
+
+      <div className="you-row">
+        <Avatar name={user.name} src={user.avatar} size={34} />
+        <div className="you-text">
+          <span className="persona-name">{user.name}</span>
+          <span className="persona-note">your picture, shown on your messages</span>
+        </div>
+        <button className="link" onClick={() => userFile.current?.click()}>change picture</button>
+      </div>
 
       <ul className="persona-list">
         <li className={activeId === null ? 'active' : ''}>
@@ -53,6 +109,7 @@ export default function ProfileDialog({ onClose, personas, activeId, onSelect, o
 
         {personas.map((p) => (
           <li key={p.id} className={activeId === p.id ? 'active' : ''}>
+            <Avatar name={p.name} src={p.avatar} size={26} />
             <button className="persona-pick" onClick={() => onSelect(p.id)}>
               <span className="persona-name">{p.name}</span>
               {p.note && <span className="persona-note">{p.note}</span>}
@@ -66,6 +123,7 @@ export default function ProfileDialog({ onClose, personas, activeId, onSelect, o
                     name: p.name,
                     note: p.note ?? '',
                     systemPrompt: p.systemPrompt ?? '',
+                    avatar: p.avatar,
                     createdAt: p.createdAt,
                   })
                 }
@@ -80,6 +138,16 @@ export default function ProfileDialog({ onClose, personas, activeId, onSelect, o
 
       {draft ? (
         <div className="persona-form">
+          <div className="you-row">
+            <Avatar name={draft.name || '?'} src={draft.avatar} size={34} />
+            <button className="link" onClick={() => personaFile.current?.click()}>change picture</button>
+            {draft.avatar && (
+              <button className="link" onClick={() => setDraft({ ...draft, avatar: undefined })}>
+                remove
+              </button>
+            )}
+          </div>
+
           <label className="field">
             <span>Name</span>
             <input
@@ -90,7 +158,7 @@ export default function ProfileDialog({ onClose, personas, activeId, onSelect, o
             />
           </label>
           <label className="field">
-            <span>Note</span>
+            <span>Description</span>
             <input
               value={draft.note}
               onChange={(e) => setDraft({ ...draft, note: e.target.value })}
@@ -116,6 +184,8 @@ export default function ProfileDialog({ onClose, personas, activeId, onSelect, o
           <button onClick={() => setDraft(blank())}>New profile</button>
         </div>
       )}
+
+      {error && <div className="error">{error}</div>}
     </Dialog>
   )
 }

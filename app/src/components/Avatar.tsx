@@ -1,8 +1,19 @@
-type Props = { name: string; size?: number }
+type Props = { name: string; src?: string; size?: number }
 
-// Initials on a colour derived from the name: no uploads, no image pipeline,
-// and the same character always looks the same.
-export default function Avatar({ name, size = 24 }: Props) {
+// An uploaded image if there is one, otherwise initials on a colour derived
+// from the name: no uploads required, and the same character always looks the same.
+export default function Avatar({ name, src, size = 24 }: Props) {
+  if (src) {
+    return (
+      <img
+        className="avatar avatar-img"
+        src={src}
+        alt=""
+        style={{ width: size, height: size }}
+      />
+    )
+  }
+
   const initials =
     name
       .trim()

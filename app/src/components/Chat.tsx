@@ -6,8 +6,8 @@ type Props = {
   messages: Msg[]
   streaming: boolean
   showReasoning: boolean
-  resolveName: (personaId?: string | null) => string
-  userName: string
+  resolveIdentity: (personaId?: string | null) => { name: string; avatar?: string }
+  user: { name: string; avatar?: string }
   onRegenerate: () => void
   onEdit: (text: string) => void
 }
@@ -16,8 +16,8 @@ export default function Chat({
   messages,
   streaming,
   showReasoning,
-  resolveName,
-  userName,
+  resolveIdentity,
+  user,
   onRegenerate,
   onEdit,
 }: Props) {
@@ -58,8 +58,8 @@ export default function Chat({
             message={m}
             streaming={streaming}
             showReasoning={showReasoning}
-            resolveName={resolveName}
-            userName={userName}
+            resolveIdentity={resolveIdentity}
+            user={user}
             isLast={i === messages.length - 1}
             isLastUser={i === lastUserIdx}
             onRegenerate={onRegenerate}

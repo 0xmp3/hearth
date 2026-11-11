@@ -1,37 +1,88 @@
+import Avatar from './Avatar'
 import type { Conversation } from '../lib/db'
 
 type Props = {
   conversations: Conversation[]
   activeId: string | null
   disabled: boolean
+  collapsed: boolean
+  collapsible: boolean
+  user: { name: string; avatar?: string }
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
   onSettings: () => void
   onProfile: () => void
-  profileName: string | null
   onPin: (id: string) => void
+  onToggleCollapse: () => void
 }
 
 export default function Sidebar({
   conversations,
   activeId,
   disabled,
+  collapsed,
+  collapsible,
+  user,
   onSelect,
   onCreate,
   onDelete,
   onSettings,
   onProfile,
-  profileName,
   onPin,
+  onToggleCollapse,
 }: Props) {
+  if (collapsed) {
+    return (
+      <aside className="sidebar collapsed">
+        <div className="sidebar-head">
+          <button className="ghost tiny" onClick={onToggleCollapse} title="Expand sidebar">
+            »
+          </button>
+        </div>
+
+        <nav className="conv-list rail">
+          <button className="rail-btn" onClick={onCreate} disabled={disabled} title="New conversation">
+            +
+          </button>
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              className={`rail-conv ${c.id === activeId ? 'active' : ''} ${c.pinnedAt ? 'pinned' : ''}`}
+              onClick={() => !disabled && onSelect(c.id)}
+              title={c.title}
+            >
+              {c.title.trim()[0]?.toUpperCase() ?? '?'}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-foot rail">
+          <button className="rail-btn" onClick={onProfile} title="Profiles">
+            <Avatar name={user.name} src={user.avatar} size={20} />
+          </button>
+          <button className="rail-btn" onClick={onSettings} title="Settings">
+            ⚙
+          </button>
+        </div>
+      </aside>
+    )
+  }
+
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
         <span className="wordmark">hearth</span>
-        <button className="ghost" onClick={onCreate} disabled={disabled} title="New conversation">
-          +
-        </button>
+        <div className="head-actions">
+          <button className="ghost" onClick={onCreate} disabled={disabled} title="New conversation">
+            +
+          </button>
+          {collapsible && (
+            <button className="ghost tiny" onClick={onToggleCollapse} title="Collapse sidebar">
+              «
+            </button>
+          )}
+        </div>
       </div>
 
       <nav className="conv-list">
@@ -71,7 +122,7 @@ export default function Sidebar({
       <div className="sidebar-foot">
         <button className="foot-btn" onClick={onProfile} title="Profiles">
           <span className="foot-label">profile</span>
-          <span className="foot-value">{profileName ?? 'none'}</span>
+          <span className="foot-value">{user.name}</span>
         </button>
         <button className="foot-btn" onClick={onSettings} title="Settings">
           <span className="foot-label">settings</span>

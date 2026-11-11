@@ -48,6 +48,8 @@ button, select, textarea { font: inherit; color: inherit; }
 /* Decorative slot: only the win95 chrome shows this. */
 .titlebar { display: none; }
 
+.app-body.collapsed { grid-template-columns: 56px minmax(0, 1fr); }
+
 .app-body {
   display: grid;
   /* minmax(0, 1fr), not 1fr: a bare 1fr refuses to shrink below its content's
@@ -70,6 +72,72 @@ button, select, textarea { font: inherit; color: inherit; }
   align-items: center;
   justify-content: space-between;
   padding: 18px 16px 14px;
+}
+
+.head-actions { display: flex; align-items: center; gap: 4px; }
+
+/* ---------- collapsed rail ---------- */
+
+.sidebar.collapsed .sidebar-head {
+  justify-content: center;
+  padding: 18px 0 14px;
+}
+
+.conv-list.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0 12px;
+}
+
+.rail-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 0;
+}
+
+.rail-btn:hover { color: var(--text); border-color: var(--border); }
+
+.rail-conv {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+
+.rail-conv:hover { color: var(--text); border-color: var(--border); }
+
+.rail-conv.active {
+  color: var(--text);
+  background: var(--raised);
+  border-color: var(--border);
+}
+
+.rail-conv.pinned { color: var(--accent); }
+
+.sidebar-foot.rail {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
 }
 
 .wordmark {
@@ -263,6 +331,8 @@ button, select, textarea { font: inherit; color: inherit; }
   border-radius: 10px;
   padding: 9px 13px;
 }
+
+.avatar-img { object-fit: cover; border-radius: 50%; display: block; }
 
 .avatar {
   display: grid;
@@ -579,6 +649,53 @@ button.link:hover { color: var(--accent); }
 
 button.link.tok { font-family: var(--font-mono); font-size: 11px; }
 
+/* ---------- model browser ---------- */
+
+.model-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.model-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.model-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+
+.model-name {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.model-note {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.model-note:focus { border-color: var(--accent); }
+
 /* ---------- stats ---------- */
 
 .stat-block {
@@ -805,6 +922,29 @@ button.link.tok { font-family: var(--font-mono); font-size: 11px; }
 .persona-name { font-size: 13.5px; }
 .persona-note { font-size: 11.5px; color: var(--faint); }
 .persona-actions { display: flex; gap: 8px; }
+
+.you-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.you-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.field em {
+  font-style: normal;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+  background: transparent;
+}
 
 .persona-form {
   display: flex;

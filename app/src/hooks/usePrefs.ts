@@ -11,9 +11,21 @@ type Prefs = {
   userName: string
   /** Reply budget. Reasoning models can spend all of it thinking. */
   maxTokens: number
+  /** Data URL, or empty for initials. */
+  userAvatar: string
+  /** Whether the sidebar can be collapsed at all. */
+  sidebarCollapsible: boolean
+  sidebarCollapsed: boolean
 }
 
-const DEFAULTS: Prefs = { showReasoning: true, userName: 'You', maxTokens: 2048 }
+const DEFAULTS: Prefs = {
+  showReasoning: true,
+  userName: 'User',
+  maxTokens: 2048,
+  userAvatar: '',
+  sidebarCollapsible: true,
+  sidebarCollapsed: false,
+}
 
 function load(): Prefs {
   try {

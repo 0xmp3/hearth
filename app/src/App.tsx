@@ -9,6 +9,7 @@ import ExportDialog from './components/ExportDialog'
 import RestoreDialog from './components/RestoreDialog'
 import StatsDialog from './components/StatsDialog'
 import PromptsDialog from './components/PromptsDialog'
+import ModelsDialog from './components/ModelsDialog'
 import { useHearth } from './hooks/useHearth'
 import { usePersonas } from './hooks/usePersonas'
 import { usePrefs } from './hooks/usePrefs'
@@ -20,7 +21,7 @@ import { countMessages, exportAll, importAll, listMessages, searchMessages, type
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
 
-type DialogName = 'settings' | 'profile' | 'export' | 'restore' | 'stats' | 'prompts'
+type DialogName = 'settings' | 'profile' | 'export' | 'restore' | 'stats' | 'prompts' | 'models'
 
 export default function App() {
   const personas = usePersonas()
@@ -150,6 +151,7 @@ export default function App() {
     { id: 'export', label: 'Export…', hint: 'all or one', run: () => setDialog('export') },
     { id: 'restore', label: 'Restore…', hint: 'from a backup file', run: () => setDialog('restore') },
     { id: 'prompts', label: 'Prompt library', run: () => setDialog('prompts') },
+    { id: 'models', label: 'Models', hint: 'browse a folder', run: () => setDialog('models') },
     { id: 'stats', label: 'Stats', hint: 'speed history', run: () => setDialog('stats') },
     { id: 'settings', label: 'Settings', run: () => setDialog('settings') },
     { id: 'profile', label: 'Profiles', run: () => setDialog('profile') },
@@ -169,17 +171,20 @@ export default function App() {
         </div>
       </div>
 
-      <div className="app-body">
+      <div className={`app-body${prefs.sidebarCollapsible && prefs.sidebarCollapsed ? ' collapsed' : ''}`}>
         <Sidebar
           conversations={h.conversations}
           activeId={h.activeId}
           disabled={h.streaming}
+          collapsed={prefs.sidebarCollapsible && prefs.sidebarCollapsed}
+          collapsible={prefs.sidebarCollapsible}
+          user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
+          onToggleCollapse={() => updatePrefs({ sidebarCollapsed: !prefs.sidebarCollapsed })}
           onSelect={h.select}
           onCreate={h.create}
           onDelete={(id) => setConfirmDelete(id)}
           onSettings={() => setDialog('settings')}
           onProfile={() => setDialog('profile')}
-          profileName={personas.active?.name ?? null}
           onPin={h.togglePin}
         />
 
@@ -255,8 +260,11 @@ export default function App() {
             messages={h.messages}
             streaming={h.streaming}
             showReasoning={prefs.showReasoning}
-            resolveName={(personaId) => personas.resolve(personaId)?.name ?? 'Hearth'}
-            userName={prefs.userName || 'You'}
+            resolveIdentity={(personaId) => {
+              const p = personas.resolve(personaId)
+              return { name: p?.name ?? 'Hearth', avatar: p?.avatar }
+            }}
+            user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
             onRegenerate={h.regenerate}
             onEdit={h.editLast}
           />
@@ -305,6 +313,10 @@ export default function App() {
           onUserName={(value) => updatePrefs({ userName: value })}
           maxTokens={prefs.maxTokens}
           onMaxTokens={(value) => updatePrefs({ maxTokens: value })}
+          modelCtx={ctxTotal}
+          sidebarCollapsible={prefs.sidebarCollapsible}
+          onSidebarCollapsible={(value) => updatePrefs({ sidebarCollapsible: value })}
+          onModels={() => setDialog('models')}
         />
       )}
 
@@ -316,6 +328,8 @@ export default function App() {
           onSelect={personas.select}
           onSave={personas.save}
           onRemove={personas.remove}
+          user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
+          onUserAvatar={(dataUrl) => updatePrefs({ userAvatar: dataUrl })}
         />
       )}
 
@@ -333,6 +347,8 @@ export default function App() {
       )}
 
       {dialog === 'stats' && <StatsDialog onClose={() => setDialog(null)} />}
+
+      {dialog === 'models' && <ModelsDialog onClose={() => setDialog(null)} />}
 
       {dialog === 'prompts' && (
         <PromptsDialog

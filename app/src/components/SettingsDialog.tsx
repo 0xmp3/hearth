@@ -1,4 +1,5 @@
 import Dialog from './Dialog'
+import { BUDGET_STOPS, formatTokens, nearestStopIndex } from '../lib/budget'
 import type { ModelInfo } from '../lib/models'
 
 type Props = {
@@ -18,6 +19,10 @@ type Props = {
   onUserName: (value: string) => void
   maxTokens: number
   onMaxTokens: (value: number) => void
+  modelCtx?: number
+  sidebarCollapsible: boolean
+  onSidebarCollapsible: (value: boolean) => void
+  onModels: () => void
 }
 
 export default function SettingsDialog({
@@ -37,6 +42,10 @@ export default function SettingsDialog({
   onUserName,
   maxTokens,
   onMaxTokens,
+  modelCtx,
+  sidebarCollapsible,
+  onSidebarCollapsible,
+  onModels,
 }: Props) {
   return (
     <Dialog
@@ -65,13 +74,32 @@ export default function SettingsDialog({
         </label>
 
         <label className="field">
-          <span>Reply budget</span>
-          <select value={maxTokens} onChange={(e) => onMaxTokens(Number(e.target.value))}>
-            <option value={1024}>1024 tokens</option>
-            <option value={2048}>2048 tokens</option>
-            <option value={4096}>4096 tokens</option>
-            <option value={8192}>8192 tokens</option>
-          </select>
+          <span>Reply budget — {formatTokens(maxTokens)}</span>
+          <input
+            type="range"
+            min={0}
+            max={BUDGET_STOPS.length - 1}
+            step={1}
+            value={nearestStopIndex(maxTokens)}
+            onChange={(e) => onMaxTokens(BUDGET_STOPS[Number(e.target.value)])}
+          />
+          <em className="hint">
+            {modelCtx && maxTokens > modelCtx
+              ? `capped at ${formatTokens(modelCtx)} — this model's context`
+              : 'the most a single reply may generate'}
+          </em>
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sidebarCollapsible}
+            onChange={(e) => onSidebarCollapsible(e.target.checked)}
+          />
+          <span>
+            Collapsible sidebar
+            <em>collapse the conversation list to a narrow rail</em>
+          </span>
         </label>
 
         <label className="check">
@@ -110,6 +138,9 @@ export default function SettingsDialog({
             ? 'No models reported by the server.'
             : `${models.length} model${models.length === 1 ? '' : 's'}: ${models.map((m) => m.id).join(', ')}`}
         </p>
+        <div className="row">
+          <button className="ghost" onClick={onModels}>Browse model folder…</button>
+        </div>
       </section>
 
       <section className="setting">

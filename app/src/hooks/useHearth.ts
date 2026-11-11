@@ -7,6 +7,7 @@ import { listModels, type ModelInfo } from '../lib/models'
 import { chatTurn, type TurnDriver } from '../lib/turn'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
+import { effectiveBudget } from '../lib/budget'
 import type { ChatMessage, Stats } from '../lib/stream'
 
 export function useHearth(
@@ -103,10 +104,12 @@ export function useHearth(
     setStreaming(true)
 
     try {
+      const activeModel = conv.model || model
       await turn({
-        model: conv.model || model,
+        model: activeModel,
         messages: history,
-        maxTokens,
+        // Never ask for more than the model can hold.
+        maxTokens: effectiveBudget(maxTokens, models.find((m) => m.id === activeModel)?.ctx),
         signal: controller.signal,
         append: (field, text) => {
           const draft = draftRef.current

@@ -43,7 +43,7 @@ export type Message = {
 }
 
 const DB_NAME = 'hearth'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 let handle: Promise<IDBDatabase> | null = null
 
@@ -67,6 +67,10 @@ function open(): Promise<IDBDatabase> {
       // v3.
       if (!db.objectStoreNames.contains('prompts')) {
         db.createObjectStore('prompts', { keyPath: 'id' })
+      }
+      // v4. Small key-value store: directory handles, model notes.
+      if (!db.objectStoreNames.contains('meta')) {
+        db.createObjectStore('meta', { keyPath: 'key' })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -184,6 +188,8 @@ export type Persona = {
   name: string
   /** One line about who this is, shown in the picker. */
   note?: string
+  /** Data URL, or absent for initials. */
+  avatar?: string
   /** Prepended to every conversation's system prompt while active. */
   systemPrompt?: string
   createdAt: number
@@ -332,6 +338,15 @@ export function putPersona(p: Persona): Promise<IDBValidKey> {
 
 export async function deletePersona(id: string): Promise<void> {
   await tx('personas', 'readwrite', (s) => s.delete(id))
+}
+
+export async function getMeta<T>(key: string): Promise<T | undefined> {
+  const row = await tx<{ key: string; value: T } | undefined>('meta', 'readonly', (s) => s.get(key))
+  return row?.value
+}
+
+export async function setMeta<T>(key: string, value: T): Promise<void> {
+  await tx('meta', 'readwrite', (s) => s.put({ key, value }))
 }
 
 export async function listPrompts(): Promise<Prompt[]> {
