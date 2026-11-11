@@ -299,6 +299,23 @@ export function useHearth(turn: TurnDriver = chatTurn) {
     await runTurn(conv, buildHistory(kept, conv), assistantMsg)
   }
 
+  // Re-read everything from IndexedDB. Used after an import.
+  async function reload() {
+    const convs = await db.listConversations()
+    setConversations(convs)
+    const current = convs.find((c) => c.id === activeId)
+    if (current) {
+      setMessages(await db.listMessages(current.id))
+    } else if (convs[0]) {
+      setActiveId(convs[0].id)
+      setModel(convs[0].model || model)
+      setMessages(await db.listMessages(convs[0].id))
+    } else {
+      setActiveId(null)
+      setMessages([])
+    }
+  }
+
   function stop() {
     abortRef.current?.abort()
   }
@@ -324,5 +341,6 @@ export function useHearth(turn: TurnDriver = chatTurn) {
     regenerate,
     editLast,
     stop,
+    reload,
   }
 }

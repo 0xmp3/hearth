@@ -5,14 +5,16 @@ import Composer from './components/Composer'
 import Palette, { type PaletteAction } from './components/Palette'
 import { useHearth } from './hooks/useHearth'
 import { useTheme } from './theme/apply'
-import { searchMessages } from './lib/db'
-import { download, slug, toJson, toMarkdown } from './lib/export'
+import { exportAll, importAll, searchMessages } from './lib/db'
+import { backupFilename, download, parseBackup, slug, toJson, toMarkdown } from './lib/export'
 
 export default function App() {
   const h = useHearth()
   const t = useTheme()
   const [showSystem, setShowSystem] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [sysDraft, setSysDraft] = useState('')
   const sysRef = useRef('')
   const sysTimer = useRef<number | null>(null)
@@ -75,10 +77,32 @@ export default function App() {
     download(`${slug(conv.title)}.json`, toJson(conv, h.messages), 'application/json')
   }
 
+  async function backupAll() {
+    const backup = await exportAll()
+    download(backupFilename(), JSON.stringify(backup, null, 2), 'application/json')
+    setNotice(`Backed up ${backup.conversations.length} conversations, ${backup.messages.length} messages.`)
+  }
+
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const backup = parseBackup(await file.text())
+      const result = await importAll(backup)
+      await h.reload()
+      setNotice(`Restored ${result.conversations} conversations, ${result.messages} messages.`)
+    } catch (err) {
+      setNotice(`Import failed: ${(err as Error).message}`)
+    }
+  }
+
   const actions: PaletteAction[] = [
     { id: 'new', label: 'New conversation', run: () => void h.create() },
     { id: 'export-md', label: 'Export conversation as Markdown', run: exportMarkdown },
     { id: 'export-json', label: 'Export conversation as JSON', run: exportJson },
+    { id: 'backup', label: 'Back up all conversations', hint: 'json', run: () => void backupAll() },
+    { id: 'restore', label: 'Restore from backup…', hint: 'json', run: () => fileRef.current?.click() },
     { id: 'system', label: 'Toggle system prompt', run: () => setShowSystem((v) => !v) },
     ...(h.streaming ? [{ id: 'stop', label: 'Stop generating', run: h.stop }] : []),
   ]
@@ -114,6 +138,8 @@ export default function App() {
           themeId={t.themeId}
           themes={t.available}
           onTheme={t.setTheme}
+          onBackup={() => void backupAll()}
+          onRestore={() => fileRef.current?.click()}
         />
 
         <main className="main">
@@ -163,10 +189,23 @@ export default function App() {
           />
 
           {h.error && <div className="error">{h.error}</div>}
+          {notice && (
+            <div className="notice" onClick={() => setNotice(null)}>
+              {notice}
+            </div>
+          )}
 
           <Composer streaming={h.streaming} onSend={h.send} onStop={h.stop} />
         </main>
       </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/json,.json"
+        style={{ display: 'none' }}
+        onChange={onImportFile}
+      />
 
       <Palette
         open={paletteOpen}

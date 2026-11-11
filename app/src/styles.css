@@ -100,6 +100,25 @@ button, select, textarea { font: inherit; color: inherit; }
 
 .theme-select:hover { border-color: var(--faint); }
 
+.foot-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 7px;
+  padding-left: 2px;
+}
+
+button.foot-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+button.foot-link:hover { color: var(--accent); }
+
 .conv {
   display: flex;
   align-items: center;
@@ -270,6 +289,15 @@ button, select, textarea { font: inherit; color: inherit; }
 .hint {
   color: var(--faint);
   font-size: 12px;
+}
+
+.notice {
+  color: var(--muted);
+  font-size: 12px;
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
 }
 
 .error {

@@ -10,6 +10,8 @@ type Props = {
   themeId: string
   themes: { id: string; name: string }[]
   onTheme: (id: string) => void
+  onBackup: () => void
+  onRestore: () => void
 }
 
 export default function Sidebar({
@@ -22,6 +24,8 @@ export default function Sidebar({
   themeId,
   themes,
   onTheme,
+  onBackup,
+  onRestore,
 }: Props) {
   return (
     <aside className="sidebar">
@@ -67,6 +71,15 @@ export default function Sidebar({
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
+
+        <div className="foot-actions">
+          <button className="foot-link" onClick={onBackup} title="Save every conversation to a JSON file">
+            backup
+          </button>
+          <button className="foot-link" onClick={onRestore} title="Restore conversations from a backup file">
+            restore
+          </button>
+        </div>
       </div>
     </aside>
   )

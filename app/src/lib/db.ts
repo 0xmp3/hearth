@@ -143,6 +143,53 @@ export async function searchMessages(query: string, limit = 20): Promise<SearchH
   return hits.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit)
 }
 
+export type Backup = {
+  format: 'hearth-backup'
+  version: 1
+  exportedAt: string
+  conversations: Conversation[]
+  messages: Message[]
+}
+
+export async function exportAll(): Promise<Backup> {
+  const db = await open()
+  const read = <T,>(store: string) =>
+    new Promise<T[]>((resolve, reject) => {
+      const t = db.transaction(store, 'readonly')
+      const req = t.objectStore(store).getAll()
+      req.onsuccess = () => resolve(req.result as T[])
+      req.onerror = () => reject(req.error)
+    })
+
+  const [conversations, messages] = await Promise.all([
+    read<Conversation>('conversations'),
+    read<Message>('messages'),
+  ])
+
+  return {
+    format: 'hearth-backup',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    conversations,
+    messages,
+  }
+}
+
+// Merge, never replace: restoring into an empty database brings everything
+// back, and restoring into a populated one overwrites by id instead of
+// destroying whatever else is there.
+export async function importAll(backup: Backup): Promise<{ conversations: number; messages: number }> {
+  const db = await open()
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction(['conversations', 'messages'], 'readwrite')
+    for (const c of backup.conversations) t.objectStore('conversations').put(c)
+    for (const m of backup.messages) t.objectStore('messages').put(m)
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+  })
+  return { conversations: backup.conversations.length, messages: backup.messages.length }
+}
+
 export function newId(): string {
   return crypto.randomUUID()
 }

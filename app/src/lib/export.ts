@@ -1,4 +1,4 @@
-import type { Conversation, Message } from './db'
+import type { Backup, Conversation, Message } from './db'
 
 export function toMarkdown(conv: Conversation, messages: Message[]): string {
   const out: string[] = [
@@ -37,6 +37,38 @@ export function slug(title: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 40) || 'conversation'
   )
+}
+
+// Validate before touching the database: a half-parsed backup that writes
+// garbage into IndexedDB is worse than a refused import.
+export function parseBackup(text: string): Backup {
+  let data: any
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error('that file is not valid JSON')
+  }
+
+  if (data?.format !== 'hearth-backup') throw new Error('that is not a Hearth backup file')
+  if (data.version !== 1) throw new Error(`unsupported backup version: ${data.version}`)
+  if (!Array.isArray(data.conversations) || !Array.isArray(data.messages)) {
+    throw new Error('backup is missing conversations or messages')
+  }
+
+  for (const c of data.conversations) {
+    if (!c?.id || typeof c.title !== 'string') throw new Error('a conversation in the backup is malformed')
+  }
+  for (const m of data.messages) {
+    if (!m?.id || !m.conversationId || typeof m.content !== 'string') {
+      throw new Error('a message in the backup is malformed')
+    }
+  }
+
+  return data as Backup
+}
+
+export function backupFilename(): string {
+  return `hearth-backup-${new Date().toISOString().slice(0, 10)}.json`
 }
 
 export function download(filename: string, text: string, mime: string): void {
