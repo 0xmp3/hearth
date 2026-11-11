@@ -103,6 +103,46 @@ export async function deleteMessage(id: string): Promise<void> {
   await tx('messages', 'readwrite', (s) => s.delete(id))
 }
 
+export type SearchHit = {
+  conversationId: string
+  messageId: string
+  role: 'user' | 'assistant'
+  snippet: string
+  createdAt: number
+}
+
+// Linear scan over every message. At a few thousand messages this is
+// instant; if it ever isn't, that's the signal to add an FTS index.
+export async function searchMessages(query: string, limit = 20): Promise<SearchHit[]> {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+
+  const db = await open()
+  const all = await new Promise<Message[]>((resolve, reject) => {
+    const t = db.transaction('messages', 'readonly')
+    const req = t.objectStore('messages').getAll()
+    req.onsuccess = () => resolve(req.result as Message[])
+    req.onerror = () => reject(req.error)
+  })
+
+  const hits: SearchHit[] = []
+  for (const m of all) {
+    const idx = m.content.toLowerCase().indexOf(q)
+    if (idx === -1) continue
+    const start = Math.max(0, idx - 40)
+    const end = Math.min(m.content.length, idx + q.length + 60)
+    hits.push({
+      conversationId: m.conversationId,
+      messageId: m.id,
+      role: m.role,
+      snippet: (start > 0 ? '…' : '') + m.content.slice(start, end).replace(/\s+/g, ' ').trim(),
+      createdAt: m.createdAt,
+    })
+  }
+
+  return hits.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit)
+}
+
 export function newId(): string {
   return crypto.randomUUID()
 }

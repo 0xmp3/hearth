@@ -19,6 +19,8 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --font-display: ui-serif, Georgia, "Times New Roman", serif;
+  /* Not a theme colour: a scrim and a shadow are the same in every palette. */
+  --scrim: rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
 
@@ -457,6 +459,90 @@ button.link:hover { color: var(--accent); }
 }
 
 .code-wrap:hover .copy { opacity: 1; }
+
+/* ---------- command palette ---------- */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: var(--scrim);
+}
+
+.palette {
+  width: min(560px, calc(100vw - 40px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px var(--scrim);
+  overflow: hidden;
+}
+
+.palette-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 13px 15px;
+  font: inherit;
+  outline: none;
+}
+
+.palette-input::placeholder { color: var(--faint); }
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.palette-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+
+.palette-list li.active { background: var(--raised); }
+
+.palette-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-sub {
+  color: var(--faint);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.palette-empty {
+  color: var(--faint);
+  font-size: 13px;
+  padding: 10px;
+}
+
+.palette-foot {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 11px;
+}
 
 /* ---------- syntax colours (warm, matches the palette) ---------- */
 

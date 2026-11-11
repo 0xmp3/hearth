@@ -120,7 +120,13 @@ export function useHearth(turn: TurnDriver = chatTurn) {
         setError((err as Error).message)
       }
     } finally {
+      const finished = draftRef.current
       flushSave()
+      // The abort flag is set on the draft object, not through setMessages,
+      // so without this the "stopped" marker only appeared after a reload.
+      if (finished?.aborted) {
+        setMessages((prev) => prev.map((m) => (m.id === finished.id ? { ...finished } : m)))
+      }
       draftRef.current = null
       abortRef.current = null
       setStreaming(false)

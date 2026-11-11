@@ -312,6 +312,44 @@
   border: 1px solid var(--bevel-lo);
 }
 
+/* ---------- command palette as a 95 dialog ---------- */
+
+[data-chrome='win95'] .palette {
+  border-radius: 0;
+  background: var(--bg);
+  border: 2px solid;
+  border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
+  box-shadow: 3px 3px 0 var(--scrim);
+}
+
+[data-chrome='win95'] .palette-input {
+  background: var(--field);
+  color: var(--text);
+  border-bottom: 1px solid var(--bevel-lo);
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+[data-chrome='win95'] .palette-list li {
+  border-radius: 0;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+[data-chrome='win95'] .palette-list li.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+[data-chrome='win95'] .palette-list li.active .palette-sub {
+  color: var(--on-accent);
+}
+
+[data-chrome='win95'] .palette-foot {
+  border-top: 1px solid var(--bevel-lo);
+  font-size: 11px;
+}
+
 /* ---------- chunky scrollbars ---------- */
 
 [data-chrome='win95'] ::-webkit-scrollbar {

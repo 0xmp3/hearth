@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import Sidebar from './components/Sidebar'
 import Chat from './components/Chat'
 import Composer from './components/Composer'
+import Palette, { type PaletteAction } from './components/Palette'
 import { useHearth } from './hooks/useHearth'
 import { useTheme } from './theme/apply'
+import { searchMessages } from './lib/db'
+import { download, slug, toJson, toMarkdown } from './lib/export'
 
 export default function App() {
   const h = useHearth()
   const t = useTheme()
   const [showSystem, setShowSystem] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [sysDraft, setSysDraft] = useState('')
   const sysRef = useRef('')
   const sysTimer = useRef<number | null>(null)
@@ -31,6 +35,53 @@ export default function App() {
       h.setSystemPrompt(text)
     }, 400)
   }
+
+  // Window title follows the conversation.
+  useEffect(() => {
+    document.title = h.activeConversation?.title
+      ? `${h.activeConversation.title} — Hearth`
+      : 'Hearth'
+  }, [h.activeConversation?.title])
+
+  // Ctrl/Cmd+K palette, Esc closes it or stops a reply.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+        return
+      }
+      if (e.key === 'Escape') {
+        if (paletteOpen) {
+          setPaletteOpen(false)
+          return
+        }
+        if (h.streaming) h.stop()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [paletteOpen, h.streaming, h.stop])
+
+  function exportMarkdown() {
+    const conv = h.activeConversation
+    if (!conv) return
+    download(`${slug(conv.title)}.md`, toMarkdown(conv, h.messages), 'text/markdown')
+  }
+
+  function exportJson() {
+    const conv = h.activeConversation
+    if (!conv) return
+    download(`${slug(conv.title)}.json`, toJson(conv, h.messages), 'application/json')
+  }
+
+  const actions: PaletteAction[] = [
+    { id: 'new', label: 'New conversation', run: () => void h.create() },
+    { id: 'export-md', label: 'Export conversation as Markdown', run: exportMarkdown },
+    { id: 'export-json', label: 'Export conversation as JSON', run: exportJson },
+    { id: 'system', label: 'Toggle system prompt', run: () => setShowSystem((v) => !v) },
+    ...(h.streaming ? [{ id: 'stop', label: 'Stop generating', run: h.stop }] : []),
+  ]
 
   function flushSystem() {
     if (sysTimer.current !== null) {
@@ -116,6 +167,15 @@ export default function App() {
           <Composer streaming={h.streaming} onSend={h.send} onStop={h.stop} />
         </main>
       </div>
+
+      <Palette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        actions={actions}
+        conversations={h.conversations}
+        onSelect={(id) => void h.select(id)}
+        search={searchMessages}
+      />
     </div>
   )
 }
