@@ -17,6 +17,8 @@ import { randomBytes } from 'node:crypto'
 import { dirname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import * as metrics from './metrics/index.mjs'
+import { serverView } from './metrics/server-view.mjs'
 import { detect } from './engine/detect.mjs'
 import { pickSource } from './engine/catalog.mjs'
 import { install, progress, isInstalled } from './engine/install.mjs'
@@ -108,6 +110,8 @@ function start({ ctx, ngl }) {
     '-c', String(ctx ?? cfg.ctx ?? 16384),
     '-ngl', String(ngl ?? cfg.ngl ?? 99),
     '--jinja',
+    // Exposes /metrics, which is where the KV cache and slot numbers come from.
+    '--metrics',
   ]
 
   lastError = null
@@ -281,6 +285,30 @@ const server = createServer((req, res) => {
     return
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/metrics') {
+    const model = url.searchParams.get('model')
+    const models = resolveModelsDir(DATA)
+    Promise.all([
+      metrics.snapshot(models.path ?? DATA),
+      serverView(LLAMA_PORT, model).catch(() => null),
+    ])
+      .then(([system, server]) => json(res, 200, { system, server, sampling: metrics.running() }))
+      .catch((err) => json(res, 500, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/metrics/start') {
+    metrics.start()
+    json(res, 200, { sampling: metrics.running() })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/metrics/stop') {
+    metrics.stop()
+    json(res, 200, { sampling: metrics.running() })
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/engine/progress') {
     json(res, 200, { progress, installing })
     return
@@ -359,6 +387,7 @@ server.listen(PORT, '127.0.0.1', () => {
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     stop()
+    metrics.stop()
     process.exit(0)
   })
 }

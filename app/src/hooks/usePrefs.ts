@@ -18,6 +18,8 @@ type Prefs = {
   assistantAvatar: string
   /** Whether the sidebar can be collapsed at all. */
   sidebarCollapsible: boolean
+  /** Show the system metrics strip in the sidebar. Off by default. */
+  showMetrics: boolean
   sidebarCollapsed: boolean
   /** 'sidebar' = conversations down the left, 'tabs' = across the top. */
   layout: 'sidebar' | 'tabs'
@@ -31,6 +33,7 @@ const DEFAULTS: Prefs = {
   assistantName: 'Hearth',
   assistantAvatar: '',
   sidebarCollapsible: true,
+  showMetrics: false,
   sidebarCollapsed: false,
   layout: 'sidebar',
 }

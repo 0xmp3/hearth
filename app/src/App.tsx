@@ -199,6 +199,8 @@ export default function App() {
           collapsed={prefs.sidebarCollapsible && prefs.sidebarCollapsed}
           collapsible={prefs.sidebarCollapsible}
           user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
+          model={h.model}
+          showMetrics={prefs.showMetrics}
           onToggleCollapse={() => updatePrefs({ sidebarCollapsed: !prefs.sidebarCollapsed })}
           onSelect={h.select}
           onCreate={h.create}
@@ -339,7 +341,9 @@ export default function App() {
           onMaxTokens={(value) => updatePrefs({ maxTokens: value })}
           modelCtx={ctxTotal}
           sidebarCollapsible={prefs.sidebarCollapsible}
-          onSidebarCollapsible={(value) => updatePrefs({ sidebarCollapsible: value })}
+          onSidebarCollapsible={(v) => updatePrefs({ sidebarCollapsible: v })}
+          showMetrics={prefs.showMetrics}
+          onShowMetrics={(v) => updatePrefs({ showMetrics: v })}
           onModels={() => setDialog('models')}
           layout={prefs.layout}
           onLayout={(value) => updatePrefs({ layout: value })}

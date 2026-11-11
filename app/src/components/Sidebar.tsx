@@ -1,4 +1,5 @@
 import Avatar from './Avatar'
+import MetricsStrip from './MetricsStrip'
 import type { Conversation } from '../lib/db'
 
 type Props = {
@@ -8,6 +9,8 @@ type Props = {
   collapsed: boolean
   collapsible: boolean
   user: { name: string; avatar?: string }
+  model?: string
+  showMetrics: boolean
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
@@ -24,6 +27,8 @@ export default function Sidebar({
   collapsed,
   collapsible,
   user,
+  model,
+  showMetrics,
   onSelect,
   onCreate,
   onDelete,
@@ -118,6 +123,8 @@ export default function Sidebar({
           </div>
         ))}
       </nav>
+
+      <MetricsStrip model={model} enabled={showMetrics} />
 
       <div className="sidebar-foot">
         <button className="foot-btn" onClick={onProfile} title="Profiles">

@@ -23,6 +23,8 @@ type Props = {
   modelCtx?: number
   sidebarCollapsible: boolean
   onSidebarCollapsible: (value: boolean) => void
+  showMetrics: boolean
+  onShowMetrics: (value: boolean) => void
   onModels: () => void
   layout: 'sidebar' | 'tabs'
   onLayout: (value: 'sidebar' | 'tabs') => void
@@ -49,6 +51,8 @@ export default function SettingsDialog({
   modelCtx,
   sidebarCollapsible,
   onSidebarCollapsible,
+  showMetrics,
+  onShowMetrics,
   onModels,
   layout,
   onLayout,
@@ -127,6 +131,21 @@ export default function SettingsDialog({
           <span>
             Show reasoning
             <em>the thinking block above replies, when the model produces one</em>
+          </span>
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={showMetrics}
+            onChange={(e) => onShowMetrics(e.target.checked)}
+          />
+          <span>
+            System metrics
+            <em>
+              a strip in the sidebar: VRAM, tokens per second, and the machine behind them.
+              Sampling only runs while it is on.
+            </em>
           </span>
         </label>
       </section>
