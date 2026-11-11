@@ -379,6 +379,18 @@ export function useHearth(
     }
   }
 
+  // Re-read the model list. Used after the backend manager starts or stops
+  // the server, since the app fetched models once at boot.
+  async function reloadModels() {
+    try {
+      const list = await listModels(BASE_URL)
+      setModels(list)
+      setModel((current) => current || list[0]?.id || '')
+    } catch {
+      setModels([])
+    }
+  }
+
   // Re-read everything from IndexedDB. Used after an import.
   async function reload() {
     const convs = await db.listConversations()
@@ -423,6 +435,7 @@ export function useHearth(
     editLast,
     stop,
     reload,
+    reloadModels,
     togglePin,
   }
 }

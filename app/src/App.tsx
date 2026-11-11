@@ -340,6 +340,7 @@ export default function App() {
           onModels={() => setDialog('models')}
           layout={prefs.layout}
           onLayout={(value) => updatePrefs({ layout: value })}
+          onServerChanged={() => void h.reloadModels()}
         />
       )}
 

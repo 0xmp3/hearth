@@ -1,5 +1,6 @@
 import Dialog from './Dialog'
 import { BUDGET_STOPS, formatTokens, nearestStopIndex } from '../lib/budget'
+import BackendPanel from './BackendPanel'
 import type { ModelInfo } from '../lib/models'
 
 type Props = {
@@ -25,6 +26,7 @@ type Props = {
   onModels: () => void
   layout: 'sidebar' | 'tabs'
   onLayout: (value: 'sidebar' | 'tabs') => void
+  onServerChanged: () => void
 }
 
 export default function SettingsDialog({
@@ -50,6 +52,7 @@ export default function SettingsDialog({
   onModels,
   layout,
   onLayout,
+  onServerChanged,
 }: Props) {
   return (
     <Dialog
@@ -157,6 +160,8 @@ export default function SettingsDialog({
             (<code>--ctx-size</code>), not the model's maximum.
           </p>
         ) : null}
+
+        <BackendPanel onServerChanged={onServerChanged} />
         <div className="row">
           <button className="ghost" onClick={onModels}>Browse model folder…</button>
         </div>

@@ -33,7 +33,14 @@ The point isn't to beat Chatbox. It's to be small enough that every line is your
 
 ## Run it
 
-Two terminals:
+Three terminals now — the model server is optional if you start it yourself.
+
+```bash
+# 0. optional: let the app start and stop the server itself
+cd ~/Documents/Hermes/hearth/app && npm run manager
+```
+
+Then:
 
 ```bash
 # 1. the models (router mode: one process, switch models in the app)
@@ -47,6 +54,8 @@ npm run dev          # http://localhost:5173
 ```
 
 Backend URL lives in `app/src/lib/config.ts`. The model dropdown is fed by `GET /v1/models`.
+
+With the manager running, **Settings → Backend** gains a context-size field and Start / Stop / Restart buttons. The context is passed as `-c` when the server launches, so changing it restarts the server — llama.cpp sizes the KV cache at load and cannot resize it live. Without the manager, the app uses whatever is already on 8088 and says so.
 
 `C:/AI/Models/served` is a flat folder of hardlinks to the GGUFs you want exposed — router mode can't see into subfolders. Add a model with:
 
