@@ -16,6 +16,8 @@ export type ThemeColors = {
   onAccent: string
   border: string
   danger: string
+  /** Advisory, not an error: a warning that is not a failure. */
+  warn: string
   syntaxKeyword: string
   syntaxString: string
   syntaxNumber: string

@@ -170,29 +170,25 @@
 
 /* ---------- controls ---------- */
 
+/* Chrome owns appearance; components own geometry.
+ *
+ * A chrome rule may set border, background, bevel and font. It must not set a
+ * size, because a component with fixed geometry (a 30px rail button, an icon
+ * button) would have to fight it on specificity — which is exactly how the
+ * rail avatar ended up 2px outside its own box.
+ *
+ * Geometry is passed in through variables instead, so a component overrides
+ * by setting --btn-pad on itself and the cascade does the rest. */
 [data-chrome='win95'] button {
   background: var(--bg);
   color: var(--text);
   border: 2px solid;
   border-color: var(--bevel-hi) var(--bevel-edge) var(--bevel-edge) var(--bevel-hi);
   border-radius: 0;
-  padding: 2px 10px;
+  padding: var(--btn-pad, 2px 10px);
   font-size: 12px;
   font-weight: 400;
   box-shadow: none;
-}
-
-/* Rail buttons are fixed-size squares. The generic button padding above would
-   squeeze their contents to a few pixels and push them out of the box, so they
-   opt out of it — including on :active, which shifts padding for the press. */
-[data-chrome='win95'] .rail-btn,
-[data-chrome='win95'] .rail-conv {
-  padding: 0;
-}
-
-[data-chrome='win95'] .rail-btn:active,
-[data-chrome='win95'] .rail-conv:active {
-  padding: 0;
 }
 
 [data-chrome='win95'] button:hover:not(:disabled) {
@@ -202,7 +198,9 @@
 
 [data-chrome='win95'] button:active:not(:disabled) {
   border-color: var(--bevel-edge) var(--bevel-hi) var(--bevel-hi) var(--bevel-edge);
-  padding: 3px 9px 1px 11px;
+  /* The press shifts content by a pixel; a component that set its own padding
+     keeps it, so the shift is expressed as a transform instead. */
+  transform: translate(1px, 1px);
 }
 
 [data-chrome='win95'] button:disabled {

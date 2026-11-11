@@ -1,0 +1,41 @@
+/* Geometry tokens — the other half of the theme contract.
+ *
+ * Colour lives in theme/types.ts. This file is the same idea for size: every
+ * spacing value in the app comes from this scale, and the whole scale moves
+ * with --density, so a theme can be compact or airy without a component
+ * knowing about it.
+ *
+ * Density multiplies spacing and control heights. It deliberately does NOT
+ * multiply radii, border widths or font sizes — a 1px border at 0.85 density
+ * is 0.85px, which renders as a blur. Those stay fixed.
+ *
+ * The scale is a 2px grid. 1px is not on it: a 1px value is a hairline, not a
+ * gap, and hairlines are written literally.
+ */
+
+:root {
+  --density: 1;
+
+  --space-1: calc(2px * var(--density));
+  --space-2: calc(4px * var(--density));
+  --space-3: calc(6px * var(--density));
+  --space-4: calc(8px * var(--density));
+  --space-5: calc(10px * var(--density));
+  --space-6: calc(12px * var(--density));
+  --space-7: calc(14px * var(--density));
+  --space-8: calc(16px * var(--density));
+  --space-9: calc(20px * var(--density));
+  --space-10: calc(24px * var(--density));
+  --space-11: calc(28px * var(--density));
+
+  /* Fixed: these describe shape, not room. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --border-w: 1px;
+
+  /* Controls shrink with density, because a compact theme wants shorter rows. */
+  --control-h: calc(30px * var(--density));
+  --control-h-sm: calc(24px * var(--density));
+}
