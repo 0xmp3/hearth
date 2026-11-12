@@ -92,5 +92,15 @@ export function useNetwork() {
     }
   }
 
-  return { enabled, available, busy, error, toggle, refresh, search, saveSearch, testSearch }
+  // A provider is not a working provider. Brave without a key, or SearXNG
+  // without an address, would be a tool that can only fail — the exact thing the
+  // per-turn tool list exists to prevent.
+  const searchReady =
+    search.provider === 'brave'
+      ? search.hasKey
+      : search.provider === 'searxng'
+        ? Boolean(search.searxngUrl.trim())
+        : false
+
+  return { enabled, available, busy, error, toggle, refresh, search, searchReady, saveSearch, testSearch }
 }

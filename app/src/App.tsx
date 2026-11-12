@@ -65,7 +65,7 @@ export default function App() {
     maxTokens: prefs.maxTokens,
     resolveProfile: (profileId) => profiles.resolve(profileId),
     network: net.enabled,
-    search: net.search.provider !== 'off',
+    search: net.searchReady,
   })
   const t = useTheme()
 
