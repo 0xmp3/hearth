@@ -85,6 +85,30 @@ export type SearchState = {
 
 export type SearchHit = { title: string; url: string; snippet: string }
 
+export type WorkspaceState = {
+  enabled: boolean
+  path: string
+  exists: boolean
+  error?: string
+}
+
+export type WorkspaceList = { path: string; entries: string[]; truncated: boolean }
+export type WorkspaceSearch = {
+  query: string
+  regex: boolean
+  scanned: number
+  hits: { file: string; line: number; text: string }[]
+  truncated: boolean
+}
+export type WorkspaceFile = {
+  path: string
+  start: number
+  end: number
+  total: number
+  text: string
+  truncated: boolean
+}
+
 export type SearxngStatus = {
   installed: boolean
   running: boolean
@@ -116,6 +140,15 @@ export const manager = {
   searchState: () => call<SearchState>('/api/search'),
   saveSearch: (patch: { provider?: string; braveKey?: string; searxngUrl?: string }) =>
     call<SearchState>('/api/search', { method: 'POST', body: JSON.stringify(patch) }),
+  workspace: () => call<WorkspaceState>('/api/workspace'),
+  setWorkspace: (patch: { path?: string; enabled?: boolean }) =>
+    call<WorkspaceState>('/api/workspace', { method: 'POST', body: JSON.stringify(patch) }),
+  listFiles: (path?: string, depth?: number) =>
+    call<WorkspaceList>('/api/workspace/list', { method: 'POST', body: JSON.stringify({ path, depth }) }),
+  searchFiles: (query: string, opts: { path?: string; regex?: boolean; limit?: number } = {}) =>
+    call<WorkspaceSearch>('/api/workspace/search', { method: 'POST', body: JSON.stringify({ query, ...opts }) }),
+  readFile: (path: string, start?: number, lines?: number) =>
+    call<WorkspaceFile>('/api/workspace/read', { method: 'POST', body: JSON.stringify({ path, start, lines }) }),
   searxng: () => call<SearxngStatus>('/api/searxng'),
   installSearxng: () => call<{ started: boolean }>('/api/searxng/install', { method: 'POST' }),
   startSearxng: () => call<SearxngStatus>('/api/searxng/start', { method: 'POST' }),

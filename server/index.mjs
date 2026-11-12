@@ -26,6 +26,7 @@ import { install, progress, isInstalled } from './engine/install.mjs'
 import { readUrl } from './net/fetch.mjs'
 import { webSearch } from './net/search.mjs'
 import * as searxng from './searxng/install.mjs'
+import * as ws from './workspace/files.mjs'
 import {
   BIN,
   engineDir,
@@ -406,6 +407,95 @@ const server = createServer((req, res) => {
         const cfg = writeConfig(DATA, { network: body.enabled })
         push(`[net] network access ${body.enabled ? 'on' : 'off'}`)
         json(res, 200, { enabled: cfg.network === true })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  // ---- workspace ---------------------------------------------------------
+  // A folder the model may read. The manager owns the path and the guard; the
+  // app only learns whether one is configured, because it cannot read files.
+
+  const workspaceState = async () => {
+    const cfg = readConfig(DATA)
+    const w = cfg.workspace ?? {}
+    const enabled = w.enabled === true
+    if (!w.path) return { enabled, path: '', exists: false }
+    try {
+      const root = await ws.resolveRoot(w.path)
+      return { enabled, path: root, exists: true }
+    } catch (err) {
+      return { enabled, path: w.path, exists: false, error: err.message }
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/workspace') {
+    workspaceState().then((state) => json(res, 200, state))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/workspace') {
+    readBody(req, 1e4)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const cfg = readConfig(DATA)
+        const current = cfg.workspace ?? {}
+        const next = { ...current }
+
+        if (typeof body.path === 'string') {
+          const path = body.path.trim()
+          if (path) {
+            // Refuse a bad folder at the point it is set, not on the first read.
+            await ws.resolveRoot(path)
+          }
+          next.path = path
+        }
+        if (typeof body.enabled === 'boolean') next.enabled = body.enabled
+        writeConfig(DATA, { workspace: next })
+        push(`[workspace] ${next.enabled ? 'on' : 'off'} — ${next.path || '(none)'}`)
+        json(res, 200, await workspaceState())
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  const workspaceOp = async (res, run) => {
+    const cfg = readConfig(DATA)
+    const w = cfg.workspace ?? {}
+    if (w.enabled !== true) return json(res, 403, { error: 'workspace access is off' })
+    try {
+      const root = await ws.resolveRoot(w.path)
+      json(res, 200, await run(root))
+    } catch (err) {
+      json(res, 400, { error: err.message })
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/workspace/list') {
+    readBody(req, 1e4)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        return workspaceOp(res, (root) => ws.listTree(root, body.path ?? '.', body))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/workspace/search') {
+    readBody(req, 1e4)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        return workspaceOp(res, (root) => ws.searchFiles(root, body.query, body))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/workspace/read') {
+    readBody(req, 1e4)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        return workspaceOp(res, (root) => ws.readWorkspaceFile(root, body.path, body))
       })
       .catch((err) => json(res, 400, { error: err.message }))
     return

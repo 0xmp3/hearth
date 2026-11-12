@@ -31,6 +31,8 @@ export type TurnContext = {
   network?: boolean
   /** A search provider exists: adds web_search as well as web_read. */
   search?: boolean
+  /** A workspace folder is open: adds the file tools. */
+  workspace?: boolean
   /** Reports a tool that ran, for the message body. */
   onTool?: (record: ToolRecord) => void
 }
@@ -62,7 +64,11 @@ export const agentTurn: TurnDriver = async (ctx) => {
       maxTokens: ctx.maxTokens,
       signal: ctx.signal,
       tools: ctx.runTool
-        ? toolsFor({ network: ctx.network === true, search: ctx.search === true })
+        ? toolsFor({
+            network: ctx.network === true,
+            search: ctx.search === true,
+            workspace: ctx.workspace === true,
+          })
         : undefined,
       onDelta: (text) => ctx.append('content', text),
       onReasoning: (text) => ctx.append('reasoning', text),

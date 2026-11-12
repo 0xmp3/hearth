@@ -10,6 +10,7 @@
 import * as db from './db'
 import { manager } from './backend'
 import type { ToolDef } from './stream'
+import { WORKSPACE_GUIDANCE, WORKSPACE_TOOLS } from './workspaceTools'
 
 /** What the UI shows for a tool that ran. */
 export type ToolRecord = {
@@ -100,9 +101,13 @@ const WEB_SEARCH: ToolDef = {
  * web_read alone, because a declared search tool that can only fail is worse
  * than one the model never saw.
  */
-export function toolsFor(web: { network: boolean; search: boolean }): ToolDef[] {
-  if (!web.network) return [...TOOLS]
-  return web.search ? [...TOOLS, WEB_READ, WEB_SEARCH] : [...TOOLS, WEB_READ]
+export function toolsFor(web: { network: boolean; search: boolean; workspace?: boolean }): ToolDef[] {
+  const tools = [...TOOLS]
+  if (web.network) tools.push(WEB_READ)
+  if (web.network && web.search) tools.push(WEB_SEARCH)
+  // The workspace is local: it does not care whether egress is on.
+  if (web.workspace) tools.push(...WORKSPACE_TOOLS)
+  return tools
 }
 
 const REMEMBER_GUIDANCE = `You have a tool called remember. Call it whenever the user tells you something durable about themselves — a preference, an ongoing project, hardware or software they use, a constraint, or how they want you to reply. Do not call it for greetings, one-off questions, or anything about yourself. Calling it is silent: the user sees a small note, so do not announce that you are saving something.`
@@ -120,20 +125,17 @@ const SEARCH_GUIDANCE = `web_search finds pages; web_read reads one. Search firs
 
 Be decisive with these. One search per question, then at most two pages, is enough for almost anything. If those do not contain the answer, say what you found and what you could not confirm — do not run more searches hoping for a better page. Never claim to have searched unless you called the tool, and never keep a citation you did not read.`
 
-export function toolGuidance(web: { network: boolean; search: boolean }): string {
-  if (!web.network) return REMEMBER_GUIDANCE
-  return web.search
-    ? `${REMEMBER_GUIDANCE}
-
-${WEB_GUIDANCE}
-
-${SEARCH_GUIDANCE}`
-    : `${REMEMBER_GUIDANCE}
-
-${WEB_GUIDANCE}`
+export function toolGuidance(web: { network: boolean; search: boolean; workspace?: boolean }): string {
+  const parts = [REMEMBER_GUIDANCE]
+  if (web.network) {
+    parts.push(WEB_GUIDANCE)
+    if (web.search) parts.push(SEARCH_GUIDANCE)
+  }
+  if (web.workspace) parts.push(WORKSPACE_GUIDANCE)
+  return parts.join('\n\n')
 }
 
-const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH].map((t) => t.name))
+const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH, ...WORKSPACE_TOOLS].map((t) => t.name))
 
 function sameText(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
@@ -147,7 +149,7 @@ export async function runTool(
   name: string,
   rawArgs: unknown,
   conversationId: string,
-  opts: { network: boolean; search?: boolean } = { network: false },
+  opts: { network: boolean; search?: boolean; workspace?: boolean } = { network: false },
 ): Promise<ToolOutcome> {
   if (!KNOWN.has(name)) {
     return {
@@ -160,6 +162,9 @@ export async function runTool(
 
   if (name === 'web_read') return readPage(args, opts.network)
   if (name === 'web_search') return searchWeb(args, opts)
+  if (name === 'list_files' || name === 'search_files' || name === 'read_file') {
+    return runWorkspaceTool(name, args, opts.workspace === true)
+  }
 
   const text = typeof args.text === 'string' ? args.text.trim() : ''
   const scope = args.scope === 'conversation' ? 'conversation' : 'global'
@@ -281,5 +286,78 @@ async function readPage(args: Record<string, unknown>, network: boolean): Promis
       ok: true,
       summary: `${page.title || page.url} · ${page.text.length.toLocaleString()} chars`,
     },
+  }
+}
+
+/**
+ * The three workspace tools. Like the web ones, they never throw: a refusal
+ * ("outside the workspace", "not a text file") is a result the model can read
+ * and act on, and a thrown error here would end the whole turn.
+ */
+async function runWorkspaceTool(
+  name: 'list_files' | 'search_files' | 'read_file',
+  args: Record<string, unknown>,
+  workspace: boolean,
+): Promise<ToolOutcome> {
+  const fail = (message: string): ToolOutcome => ({
+    text: `${message} Nothing was read.`,
+    record: { name, ok: false, summary: message },
+  })
+
+  if (!workspace) return fail('No workspace folder is open.')
+
+  try {
+    if (name === 'list_files') {
+      const path = typeof args.path === 'string' ? args.path : undefined
+      const depth = typeof args.depth === 'number' ? args.depth : undefined
+      const out = await manager.listFiles(path, depth)
+      const head = out.entries.length ? out.entries.join('\n') : '(empty)'
+      const note = out.truncated ? '\n(listing truncated)' : ''
+      return {
+        text: `Workspace ${out.path}:
+${head}${note}`,
+        record: { name, ok: true, summary: `${out.entries.length} entries in ${out.path}` },
+      }
+    }
+
+    if (name === 'search_files') {
+      const query = typeof args.query === 'string' ? args.query.trim() : ''
+      if (!query) return fail('No search text was given.')
+      const out = await manager.searchFiles(query, {
+        path: typeof args.path === 'string' ? args.path : undefined,
+        regex: args.regex === true,
+        limit: typeof args.limit === 'number' ? args.limit : undefined,
+      })
+      if (!out.hits.length) {
+        return {
+          text: `No matches for "${query}" in ${out.scanned} files.`,
+          record: { name, ok: true, summary: `no match for "${query}" (${out.scanned} files)` },
+        }
+      }
+      const lines = out.hits.map((h) => `${h.file}:${h.line}  ${h.text}`)
+      return {
+        text: [
+          `${out.hits.length} match${out.hits.length === 1 ? '' : 'es'} for "${query}" in ${out.scanned} files:`,
+          ...lines,
+        ].join('\n'),
+        record: { name, ok: true, summary: `"${query}" — ${out.hits.length} hits` },
+      }
+    }
+
+    const path = typeof args.path === 'string' ? args.path : ''
+    if (!path) return fail('No file was named.')
+    const out = await manager.readFile(
+      path,
+      typeof args.start === 'number' ? args.start : undefined,
+      typeof args.lines === 'number' ? args.lines : undefined,
+    )
+    const tail = out.truncated ? `\n(part of ${out.total} lines — read on with start)` : ''
+    return {
+      text: `${out.path} (lines ${out.start}-${out.end} of ${out.total}):
+${out.text}${tail}`,
+      record: { name, ok: true, summary: `${out.path} · lines ${out.start}-${out.end}` },
+    }
+  } catch (err) {
+    return fail((err as Error).message)
   }
 }

@@ -33,6 +33,8 @@ export type HearthOptions = {
   network?: boolean
   /** A search provider is configured: web_search joins web_read. */
   search?: boolean
+  /** A workspace folder is open: the file tools join the rest. */
+  workspace?: boolean
 }
 
 export function useHearth(
@@ -40,9 +42,9 @@ export function useHearth(
   resolveCharacter?: (characterId: string | null | undefined) => db.Character | null,
   options: HearthOptions = {},
 ) {
-  const { maxTokens = 2048, resolveProfile, network = false, search = false } = options
-  // Both gates decide what the request declares, so they travel together.
-  const web = { network, search }
+  const { maxTokens = 2048, resolveProfile, network = false, search = false, workspace = false } = options
+  // These decide what the request declares, so they travel together.
+  const web = { network, search, workspace }
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<db.Message[]>([])
@@ -239,6 +241,7 @@ export function useHearth(
         // request never even declares web_read.
         network,
         search,
+        workspace,
         onTool: (record) => {
           const draft = draftRef.current
           if (!draft) return

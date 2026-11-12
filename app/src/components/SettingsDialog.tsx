@@ -36,6 +36,11 @@ type Props = {
   search: { provider: 'off' | 'brave' | 'searxng'; hasKey: boolean; searxngUrl: string }
   onSearch: (patch: { provider?: string; braveKey?: string; searxngUrl?: string }) => Promise<unknown>
   onTestSearch: (query: string) => Promise<{ title: string; url: string }[] | null>
+  workspace: { enabled: boolean; path: string; exists: boolean; error?: string }
+  workspaceBusy: boolean
+  workspaceError: string | null
+  onWorkspace: (patch: { path?: string; enabled?: boolean }) => Promise<unknown>
+  onCheckWorkspace: () => Promise<{ entries: string[]; truncated: boolean } | null>
 }
 
 export default function SettingsDialog({
@@ -69,7 +74,15 @@ export default function SettingsDialog({
   search,
   onSearch,
   onTestSearch,
+  workspace,
+  workspaceBusy,
+  workspaceError,
+  onWorkspace,
+  onCheckWorkspace,
 }: Props) {
+  const [wsPath, setWsPath] = useState(workspace.path)
+  const [wsCheck, setWsCheck] = useState<string | null>(null)
+  const [wsChecking, setWsChecking] = useState(false)
   // The key is write-only: the manager never sends it back, so the field starts
   // empty and only ever carries a new value.
   const [keyDraft, setKeyDraft] = useState('')
@@ -223,6 +236,74 @@ export default function SettingsDialog({
         <div className="row">
           <button className="ghost" onClick={onModels}>Browse model folder…</button>
         </div>
+      </section>
+
+      <section className="setting">
+        <h3>Workspace</h3>
+        <p className="hint">
+          A folder the model may read — notes, docs, a codebase. It gets three read-only tools
+          (list, search, read) and nothing else: no writing, no deleting, and nothing outside the
+          folder, whatever path it asks for. Off until you point it at one.
+        </p>
+        <label className="field">
+          <span>Folder</span>
+          <div className="row">
+            <input
+              type="text"
+              value={wsPath}
+              placeholder="C:/Users/You/Documents/project"
+              spellCheck={false}
+              onChange={(e) => setWsPath(e.target.value)}
+              onBlur={() => {
+                if (wsPath.trim() !== workspace.path) void onWorkspace({ path: wsPath.trim() })
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && wsPath.trim() !== workspace.path) {
+                  void onWorkspace({ path: wsPath.trim() })
+                }
+              }}
+            />
+            <button
+              className="ghost"
+              disabled={wsChecking || !workspace.exists}
+              onClick={async () => {
+                setWsChecking(true)
+                const out = await onCheckWorkspace()
+                setWsChecking(false)
+                setWsCheck(
+                  out
+                    ? `${out.entries.length} entries at the top${out.truncated ? ' (truncated)' : ''}: ${out.entries.slice(0, 6).join(', ')}`
+                    : 'that folder could not be read',
+                )
+              }}
+            >
+              {wsChecking ? 'Reading…' : 'Check'}
+            </button>
+          </div>
+          {workspace.error && <em className="hint">{workspace.error}</em>}
+          {wsCheck && <em className="hint">{wsCheck}</em>}
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={workspace.enabled}
+            disabled={workspaceBusy || !workspace.exists}
+            onChange={(e) => void onWorkspace({ enabled: e.target.checked })}
+          />
+          <span>
+            Let the model read this folder
+            <em>
+              {!workspace.path
+                ? 'set a folder first'
+                : !workspace.exists
+                  ? 'that folder is not readable right now'
+                  : workspace.enabled
+                    ? 'on — list_files, search_files and read_file are offered'
+                    : 'off — the folder is remembered but not used'}
+            </em>
+          </span>
+        </label>
+        {workspaceError && <div className="error">{workspaceError}</div>}
       </section>
 
       <section className="setting">

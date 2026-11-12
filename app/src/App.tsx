@@ -17,6 +17,7 @@ import { useCharacters } from './hooks/useCharacters'
 import { useProfiles } from './hooks/useProfiles'
 import { usePrefs } from './hooks/usePrefs'
 import { useNetwork } from './hooks/useNetwork'
+import { useWorkspace } from './hooks/useWorkspace'
 import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
@@ -24,6 +25,7 @@ import { agentTurn } from './lib/turn'
 import { countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
+import { manager } from './lib/backend'
 
 /**
  * A <select> can only carry strings, and "inherit the app-wide choice" has no
@@ -57,8 +59,10 @@ export default function App() {
     name: profiles.active?.name || 'User',
     avatar: profiles.active?.avatar || undefined,
   }
-  // Egress is the manager's decision; this is the app's copy of the answer.
+  // Egress and the workspace are the manager's decisions; these are the app's
+  // copies of the answers.
   const net = useNetwork()
+  const ws = useWorkspace()
   // agentTurn, not chatTurn: it runs tools and falls back to a single call when
   // there are none. Passing chatTurn here silently disabled the tool loop.
   const h = useHearth(agentTurn, (characterId) => characters.resolve(characterId), {
@@ -66,6 +70,7 @@ export default function App() {
     resolveProfile: (profileId) => profiles.resolve(profileId),
     network: net.enabled,
     search: net.searchReady,
+    workspace: ws.ready,
   })
   const t = useTheme()
 
@@ -432,6 +437,18 @@ export default function App() {
           search={net.search}
           onSearch={net.saveSearch}
           onTestSearch={net.testSearch}
+          workspace={{ ...(ws.state ?? { enabled: false, path: '', exists: false }), error: ws.state?.error }}
+          workspaceBusy={ws.busy}
+          workspaceError={ws.error}
+          onWorkspace={ws.save}
+          onCheckWorkspace={async () => {
+            try {
+              const out = await manager.listFiles('.', 2)
+              return { entries: out.entries, truncated: out.truncated }
+            } catch {
+              return null
+            }
+          }}
           onServerChanged={() => void h.reloadModels()}
         />
       )}
