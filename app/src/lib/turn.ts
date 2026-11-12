@@ -59,7 +59,27 @@ export const agentTurn: TurnDriver = async (ctx) => {
   // The history grows as tools run, so it is copied rather than mutated.
   const messages: ChatMessage[] = [...ctx.messages]
 
+  // Text from different rounds is different paragraphs. The model narrates
+  // before a tool call ("let me look at the folder") and continues after the
+  // result ("yes, it holds one file"), and those two runs were being glued
+  // together into "...read the file.Yes — the workspace holds...". A blank line
+  // between rounds is the whole fix; `fresh` resets per round so the separator
+  // is only added when a round actually says something.
+  let wrote = false
+  let fresh = false
+  let tail = ''
+  const say = (text: string) => {
+    // Only when the previous round did not already end on a line break: the
+    // model often closes its narration with one, and doubling it leaves a gap.
+    if (!fresh && wrote && !tail.endsWith('\n')) ctx.append('content', '\n\n')
+    fresh = true
+    wrote = true
+    tail = (tail + text).slice(-2)
+    ctx.append('content', text)
+  }
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    fresh = false
     const result = await streamChat({
       baseUrl: BASE_URL,
       model: ctx.model,
@@ -67,7 +87,7 @@ export const agentTurn: TurnDriver = async (ctx) => {
       maxTokens: ctx.maxTokens,
       signal: ctx.signal,
       tools: ctx.runTool ? toolList(ctx.tools) : undefined,
-      onDelta: (text) => ctx.append('content', text),
+      onDelta: say,
       onReasoning: (text) => ctx.append('reasoning', text),
       onStats: ctx.onStats,
     })
