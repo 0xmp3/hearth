@@ -24,6 +24,18 @@ import { countMessages, exportAll, importAll, listMessages, searchMessages, type
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
 
+/**
+ * A <select> can only carry strings, and "inherit the app-wide choice" has no
+ * id of its own. Profile ids are UUIDs, so this sentinel cannot collide.
+ */
+const INHERIT = '__inherit'
+
+/** The select's string value back to the field's three states. */
+function fromScope(value: string): string | null | undefined {
+  if (value === INHERIT) return undefined
+  return value === '' ? null : value
+}
+
 type DialogName =
   | 'settings'
   | 'profile'
@@ -134,8 +146,14 @@ export default function App() {
   const characterValue = h.activeConversation
     ? h.activeConversation.characterId === null
       ? ''
-      : (h.activeConversation.characterId ?? characters.activeId ?? '')
-    : (characters.activeId ?? '')
+      : (h.activeConversation.characterId ?? INHERIT)
+    : INHERIT
+
+  const profileValue = h.activeConversation
+    ? h.activeConversation.profileId === null
+      ? ''
+      : (h.activeConversation.profileId ?? INHERIT)
+    : INHERIT
 
   const ctxTotal = h.models.find((m) => m.id === h.model)?.ctx ?? 8192
   const lastStats = [...h.messages].reverse().find((m) => m.stats?.promptTokens)?.stats
@@ -253,18 +271,41 @@ export default function App() {
               ))}
             </select>
 
+            {/* Who you are, then who it is — the same three-way choice for
+                each: inherit the app-wide pick, pin one, or opt out. */}
+            {profiles.profiles.length > 0 && (
+              <select
+                className="model profile"
+                value={profileValue}
+                onChange={(e) => void h.setConversationProfile(fromScope(e.target.value))}
+                disabled={h.streaming || !h.activeConversation}
+                title="Who you are, for this conversation"
+              >
+                <option value={INHERIT}>
+                  {profiles.active ? `↳ ${profiles.active.name}` : '↳ inherit'}
+                </option>
+                {profiles.profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+                <option value="">no profile</option>
+              </select>
+            )}
+
             {characters.characters.length > 0 && (
               <select
                 className="model character"
                 value={characterValue}
-                onChange={(e) => void h.setConversationCharacter(e.target.value === '' ? null : e.target.value)}
+                onChange={(e) => void h.setConversationCharacter(fromScope(e.target.value))}
                 disabled={h.streaming || !h.activeConversation}
                 title="Character for this conversation"
               >
-                <option value="">no character</option>
+                <option value={INHERIT}>
+                  {characters.active ? `↳ ${characters.active.name}` : '↳ inherit'}
+                </option>
                 {characters.characters.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
+                <option value="">no character</option>
               </select>
             )}
 

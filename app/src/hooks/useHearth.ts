@@ -136,8 +136,19 @@ export function useHearth(
     ]
   }
 
+  // A reply streams for a while and the conversation can change underneath it
+  // (prompt, profile, character, model). `touch` used the snapshot captured when
+  // the turn started, so finishing a reply silently reverted an edit made during
+  // it — the profile override written mid-stream was gone after the reply landed.
+  // Every write reads the freshest copy from here instead.
+  const convsRef = useRef<db.Conversation[]>([])
+  useEffect(() => {
+    convsRef.current = conversations
+  }, [conversations])
+
   function touch(conv: db.Conversation) {
-    const updated = { ...conv, updatedAt: Date.now() }
+    const latest = convsRef.current.find((c) => c.id === conv.id) ?? conv
+    const updated = { ...latest, updatedAt: Date.now() }
     void db.putConversation(updated)
     setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
   }
@@ -267,33 +278,44 @@ export function useHearth(
     }
   }
 
+  // One write path for every field that belongs to a conversation. They all
+  // used to spread the copy captured by their own render, so two changes in one
+  // tick (or one landing while a reply streams) could undo each other. This
+  // merges over the freshest object and updates the ref synchronously, so a
+  // second change sees the first.
+  async function patchConversation(patch: Partial<db.Conversation>): Promise<db.Conversation | null> {
+    const base =
+      convsRef.current.find((c) => c.id === activeId) ?? conversations.find((c) => c.id === activeId)
+    if (!base) return null
+    const updated = { ...base, ...patch, updatedAt: Date.now() }
+    convsRef.current = convsRef.current.map((c) => (c.id === updated.id ? updated : c))
+    await db.putConversation(updated)
+    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+    return updated
+  }
+
   // The model belongs to the conversation, not to the app: switching model
   // mid-thread would silently change what the next reply comes from.
   async function changeModel(modelId: string) {
     setModel(modelId)
-    const conv = conversations.find((c) => c.id === activeId)
-    if (!conv) return
-    const updated = { ...conv, model: modelId }
-    await db.putConversation(updated)
-    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+    await patchConversation({ model: modelId })
   }
 
   // The character belongs to the conversation, so switching it mid-thread only
-  // affects what comes next.
-  async function setConversationCharacter(characterId: string | null) {
-    const conv = conversations.find((c) => c.id === activeId)
-    if (!conv) return
-    const updated = { ...conv, characterId }
-    await db.putConversation(updated)
-    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+  // affects what comes next. `undefined` inherits the app-wide character.
+  async function setConversationCharacter(characterId: string | null | undefined) {
+    await patchConversation({ characterId })
+  }
+
+  // Same three states as the character, because a profile is the same shape of
+  // choice: `undefined` inherits the app-wide profile, `null` opts this
+  // conversation out, an id pins it.
+  async function setConversationProfile(profileId: string | null | undefined) {
+    await patchConversation({ profileId })
   }
 
   async function setSystemPrompt(text: string) {
-    const conv = conversations.find((c) => c.id === activeId)
-    if (!conv) return
-    const updated = { ...conv, systemPrompt: text }
-    await db.putConversation(updated)
-    setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+    await patchConversation({ systemPrompt: text })
   }
 
   async function send(text: string, attachments: Attachment[] = []) {
@@ -476,7 +498,10 @@ export function useHearth(
     try {
       const title = await suggestTitle(BASE_URL, conv.model || model, firstText, reply)
       if (!title) return
-      const updated = { ...conv, title, updatedAt: Date.now() }
+      // Same staleness trap as `touch`: the title call takes ~0.2s, long enough
+      // for another field to change. Merge over the freshest copy.
+      const latest = convsRef.current.find((c) => c.id === conv.id) ?? conv
+      const updated = { ...latest, title, updatedAt: Date.now() }
       await db.putConversation(updated)
       setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
     } catch {
@@ -529,6 +554,7 @@ export function useHearth(
     setModel: changeModel,
     setSystemPrompt,
     setConversationCharacter,
+    setConversationProfile,
     streaming,
     stats,
     error,
