@@ -57,6 +57,8 @@ Backend URL lives in `app/src/lib/config.ts`. The model dropdown is fed by `GET 
 
 Uploads (avatars, and later attachments) are written by the manager into `data/` at the project root — gitignored, and not part of a JSON backup. Images are resized in the browser before they are sent.
 
+**Themes are files.** Drop a `.json` theme into `data/themes/` and it appears in Settings; use *Export this theme* for a valid starting point. A theme file with a built-in's id replaces it.
+
 **System metrics** are off by default. Settings → System metrics adds a strip to the sidebar: VRAM, live tokens per second, and the machine behind them. Sampling only runs while the strip is visible.
 
 **No engine yet?** Settings → Backend detects your OS and GPU and offers to download a matching build into `data/engine/`. Nothing is downloaded until you press the button, and the checksum is verified before it is unpacked.

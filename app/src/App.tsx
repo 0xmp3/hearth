@@ -333,6 +333,10 @@ export default function App() {
           messageCount={messageCount}
           themeId={t.themeId}
           themes={t.available}
+          themeProblems={t.problems}
+          onExportTheme={() =>
+            download(`${t.theme.id}.json`, JSON.stringify(t.theme, null, 2), 'application/json')
+          }
           onTheme={t.setTheme}
           showReasoning={prefs.showReasoning}
           onShowReasoning={(value) => updatePrefs({ showReasoning: value })}

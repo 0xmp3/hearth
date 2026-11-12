@@ -45,6 +45,11 @@ export type Theme = {
   colors: ThemeColors
   fonts?: ThemeFonts
   /**
+   * Base spacing multiplier, 0.5–1.5. A compact theme ships below 1, an airy
+   * one above. The user's own multiplier (not built yet) will compound with it.
+   */
+  density?: number
+  /**
    * Extra CSS custom properties for the chrome layer (bevels, title bar
    * gradient, desktop backdrop). Keys are written as `--key`. This is what
    * lets one chrome have a light and a dark variant.

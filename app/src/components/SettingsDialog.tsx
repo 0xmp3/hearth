@@ -13,6 +13,8 @@ type Props = {
   messageCount: number
   themeId: string
   themes: { id: string; name: string }[]
+  themeProblems: { file: string; reason: string }[]
+  onExportTheme: () => void
   onTheme: (id: string) => void
   showReasoning: boolean
   onShowReasoning: (value: boolean) => void
@@ -41,6 +43,8 @@ export default function SettingsDialog({
   messageCount,
   themeId,
   themes,
+  themeProblems,
+  onExportTheme,
   onTheme,
   showReasoning,
   onShowReasoning,
@@ -73,7 +77,27 @@ export default function SettingsDialog({
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
+          <em className="hint">
+            Drop a <code>.json</code> theme into <code>data/themes/</code> and it appears
+            here. Export the current one to get a valid starting point.
+          </em>
         </label>
+
+        <div className="row">
+          <button className="ghost" onClick={onExportTheme}>
+            Export this theme
+          </button>
+        </div>
+
+        {themeProblems.length > 0 && (
+          <div className="error">
+            {themeProblems.map((p) => (
+              <div key={p.file}>
+                <code>{p.file}</code>: {p.reason}
+              </div>
+            ))}
+          </div>
+        )}
 
         <label className="field">
           <span>Your name</span>

@@ -12,7 +12,7 @@
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { dirname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -239,6 +239,37 @@ async function handleFile(res, url) {
   }
 }
 
+/**
+ * Theme files. The manager only reads and parses them; validation lives in the
+ * app, next to the type it validates against. A file that will not parse is
+ * reported rather than thrown, so one bad theme cannot break the list.
+ */
+async function handleThemes(res) {
+  const dir = join(DATA, 'themes')
+  const files = []
+  const problems = []
+
+  let entries = []
+  try {
+    entries = await readdir(dir)
+  } catch {
+    // No themes folder yet is the normal case, not an error.
+    return json(res, 200, { files, problems })
+  }
+
+  for (const name of entries) {
+    if (!name.toLowerCase().endsWith('.json')) continue
+    try {
+      const raw = await readFile(join(dir, name), 'utf8')
+      files.push({ name, data: JSON.parse(raw) })
+    } catch (err) {
+      problems.push({ file: name, reason: err.message })
+    }
+  }
+
+  json(res, 200, { files, problems })
+}
+
 /** Everything the UI needs to explain the current setup. */
 async function engineStatus() {
   const detected = await detect()
@@ -289,6 +320,11 @@ const server = createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/status') {
     json(res, 200, status())
+    return
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/themes') {
+    handleThemes(res).catch((err) => json(res, 500, { error: err.message }))
     return
   }
 
