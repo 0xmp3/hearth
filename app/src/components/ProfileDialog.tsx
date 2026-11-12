@@ -29,6 +29,9 @@ type Props = {
   onSaveCharacter: (c: Character) => Promise<void>
   onRemoveCharacter: (id: string) => Promise<void>
 
+  /** Clips the manager knows about; empty when speech is not set up. */
+  voices?: { id: string; name: string }[]
+
   /** The model's own identity, used when no character is active. */
   assistant: { name: string; avatar?: string }
   onAssistantName: (name: string) => void
@@ -42,6 +45,8 @@ type CharacterDraft = {
   note: string
   systemPrompt: string
   avatar?: string
+  /** '' means the app-wide voice. */
+  voice?: string
   createdAt: number
 }
 
@@ -57,6 +62,7 @@ const blankCharacter = (): CharacterDraft => ({
   name: '',
   note: '',
   systemPrompt: '',
+  voice: '',
   createdAt: Date.now(),
 })
 
@@ -103,6 +109,7 @@ export default function ProfileDialog(props: Props) {
       name: characterDraft.name.trim(),
       note: characterDraft.note.trim() || undefined,
       systemPrompt: characterDraft.systemPrompt.trim() || undefined,
+      voice: characterDraft.voice || undefined,
       avatar: characterDraft.avatar,
       createdAt: characterDraft.createdAt,
     })
@@ -250,6 +257,7 @@ export default function ProfileDialog(props: Props) {
                       name: c.name,
                       note: c.note ?? '',
                       systemPrompt: c.systemPrompt ?? '',
+                      voice: c.voice ?? '',
                       avatar: c.avatar,
                       createdAt: c.createdAt,
                     })
@@ -303,6 +311,21 @@ export default function ProfileDialog(props: Props) {
                 rows={4}
                 placeholder="Who they are, how they speak. Added to every conversation."
               />
+            </label>
+            <label className="field">
+              <span>Voice</span>
+              <select
+                value={characterDraft.voice ?? ''}
+                onChange={(e) => setCharacterDraft({ ...characterDraft, voice: e.target.value })}
+                disabled={!props.voices?.length}
+              >
+                <option value="">app default</option>
+                {(props.voices ?? []).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="row end">
               <button className="ghost" onClick={() => setCharacterDraft(null)}>Cancel</button>

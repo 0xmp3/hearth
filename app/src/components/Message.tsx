@@ -13,6 +13,8 @@ type Props = {
   user: { name: string; avatar?: string }
   onRegenerate: () => void
   onEdit: (text: string) => void
+  /** Absent when speech is off or unavailable: no button, no dead control. */
+  speech?: { speaking: boolean; starting: boolean; onToggle: () => void }
 }
 
 function stamp(ts: number): string {
@@ -32,6 +34,7 @@ function MessageView({
   user,
   onRegenerate,
   onEdit,
+  speech,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -146,6 +149,11 @@ function MessageView({
             )}
             {!isUser && isLast && !streaming && (
               <button className="link" onClick={onRegenerate}>regenerate</button>
+            )}
+            {!isUser && speech && message.content && !streaming && (
+              <button className="link" onClick={speech.onToggle}>
+                {speech.speaking ? (speech.starting ? 'starting…' : 'stop') : 'speak'}
+              </button>
             )}
           </div>
         )}

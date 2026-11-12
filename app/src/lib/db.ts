@@ -229,6 +229,12 @@ export type Character = {
   avatar?: string
   /** Prepended to every conversation's system prompt while active. */
   systemPrompt?: string
+  /**
+   * Id of a reference clip in the manager's data/voices, or absent for "the
+   * app-wide voice". Speech is the one place where a character's identity is
+   * audible, so it belongs here rather than in settings alone.
+   */
+  voice?: string | null
   createdAt: number
 }
 

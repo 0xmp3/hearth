@@ -5,6 +5,7 @@ import BackendPanel from './BackendPanel'
 import { setBackendUrl, DEFAULT_BACKEND } from '../lib/config'
 import { manager } from '../lib/backend'
 import SearxngPanel from './SearxngPanel'
+import SpeechPanel from './SpeechPanel'
 import type { ModelInfo } from '../lib/models'
 
 type Props = {
@@ -33,6 +34,12 @@ type Props = {
   layout: 'sidebar' | 'tabs'
   onLayout: (value: 'sidebar' | 'tabs') => void
   onServerChanged: () => void
+  /** Called when the speech panel changes something the app mirrors. */
+  onSpeech?: () => void
+  autoSpeak: boolean
+  onAutoSpeak: (value: boolean) => void
+  speechVoice: string
+  onSpeechVoice: (id: string) => void
   network: { enabled: boolean; available: boolean | null; busy: boolean; error: string | null }
   onNetwork: (enabled: boolean) => void
   search: { provider: 'off' | 'brave' | 'searxng'; hasKey: boolean; searxngUrl: string }
@@ -71,6 +78,11 @@ export default function SettingsDialog({
   layout,
   onLayout,
   onServerChanged,
+  onSpeech,
+  autoSpeak,
+  onAutoSpeak,
+  speechVoice,
+  onSpeechVoice,
   network,
   onNetwork,
   search,
@@ -484,6 +496,22 @@ export default function SettingsDialog({
         )}
 
         {network.error && <div className="error">{network.error}</div>}
+      </section>
+
+      <section className="setting">
+        <h3>Speech</h3>
+        <p className="hint">
+          Replies can be read aloud by a local voice model, cloned from a short recording you
+          keep. It runs on the same llama.cpp engine as chat, in a second process that starts
+          when you first speak and stops after ten idle minutes — nothing leaves this machine.
+        </p>
+        <SpeechPanel
+          onState={() => onSpeech?.()}
+          autoSpeak={autoSpeak}
+          onAutoSpeak={onAutoSpeak}
+          defaultVoice={speechVoice}
+          onDefaultVoice={onSpeechVoice}
+        />
       </section>
 
       <section className="setting">

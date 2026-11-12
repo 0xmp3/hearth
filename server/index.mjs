@@ -26,6 +26,7 @@ import { install, progress, isInstalled } from './engine/install.mjs'
 import { readUrl } from './net/fetch.mjs'
 import { webSearch } from './net/search.mjs'
 import * as searxng from './searxng/install.mjs'
+import * as tts from './tts/index.mjs'
 import * as ws from './workspace/files.mjs'
 import {
   BIN,
@@ -575,6 +576,70 @@ const server = createServer((req, res) => {
     return
   }
 
+  // ---- speech -------------------------------------------------------------
+  //
+  // The manager owns the engine and the clips; the app only asks for audio. The
+  // response is raw WAV because the browser decodes it into an AudioBuffer and
+  // schedules it — a data URL would mean base64-ing megabytes per sentence.
+
+  if (req.method === 'GET' && url.pathname === '/api/tts') {
+    tts
+      .describe(DATA)
+      .then((state) => json(res, 200, state))
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/tts/config') {
+    readBody(req, 1e4)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        tts.saveTtsConfig(DATA, body)
+        json(res, 200, await tts.describe(DATA))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/tts/voices') {
+    readBody(req, 30e6)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const voice = await tts.importVoice(DATA, body)
+        json(res, 200, { voice, ...(await tts.describe(DATA)) })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/tts/voices/remove') {
+    readBody(req, 1e4)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        await tts.removeVoice(DATA, body.id)
+        json(res, 200, await tts.describe(DATA))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/tts/speak') {
+    readBody(req, 1e5)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const { bytes, cached } = await tts.speak(DATA, body)
+        res.writeHead(200, {
+          'Content-Type': 'audio/wav',
+          'Content-Length': bytes.length,
+          'Cache-Control': 'no-store',
+          'X-Hearth-Cached': cached ? '1' : '0',
+        })
+        res.end(bytes)
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
   // Search settings. The key is written once and never read back out: the app
   // is told whether one exists, not what it is, so a screenshot of Settings (or
   // a stray backup) cannot carry it away.
@@ -728,9 +793,14 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
     stop()
     metrics.stop()
     searxng.stop(DATA)
+    tts.shutdown()
     process.exit(0)
   })
 }
 
-// A manager that dies must not leave a Python web server behind.
-process.on('exit', () => searxng.stop(DATA))
+// A manager that dies must not leave a Python web server or a second model
+// server behind.
+process.on('exit', () => {
+  searxng.stop(DATA)
+  tts.shutdown()
+})

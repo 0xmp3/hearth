@@ -129,6 +129,27 @@ export type SearxngStatus = {
   root: string
 }
 
+/** Speech state as the manager reports it. */
+export type SpeechVoice = { id: string; name: string; file: string; ext: string; bytes: number }
+
+export type SpeechState = {
+  enabled: boolean
+  /** Engine present, both GGUFs present, at least one clip. */
+  ready: boolean
+  engine: { path: string; exists: boolean }
+  model: { path: string; exists: boolean; bytes: number }
+  mmproj: { path: string; exists: boolean; bytes: number }
+  lang: string
+  ngl: number
+  port: number
+  idleMinutes: number
+  serverRunning: boolean
+  error: string | null
+  voices: SpeechVoice[]
+  cacheFiles: number
+  log: string[]
+}
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
   /** Egress is the manager's decision; the app only asks. */
@@ -167,6 +188,26 @@ export const manager = {
   progress: () => call<{ progress: InstallProgress; installing: boolean }>('/api/engine/progress'),
   saveConfig: (patch: Partial<EngineStatus['config']>) =>
     call<EngineStatus['config']>('/api/config', { method: 'POST', body: JSON.stringify(patch) }),
+  tts: () => call<SpeechState>('/api/tts'),
+  saveTts: (patch: Partial<Pick<SpeechState, 'enabled' | 'lang' | 'ngl' | 'port' | 'idleMinutes'>> & { model?: string; mmproj?: string }) =>
+    call<SpeechState>('/api/tts/config', { method: 'POST', body: JSON.stringify(patch) }),
+  importVoice: (voice: { name: string; ext: string; data: string }) =>
+    call<SpeechState & { voice: SpeechVoice }>('/api/tts/voices', {
+      method: 'POST',
+      body: JSON.stringify(voice),
+    }),
+  removeVoice: (id: string) =>
+    call<SpeechState>('/api/tts/voices/remove', { method: 'POST', body: JSON.stringify({ id }) }),
+  /** Raw audio, not JSON — hence its own call rather than `call`. */
+  speak: async (text: string, voice: string): Promise<ArrayBuffer | null> => {
+    const res = await fetch(MANAGER + '/api/tts/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },
+      body: JSON.stringify({ text, voice }),
+    })
+    if (!res.ok) return null
+    return res.arrayBuffer()
+  },
 }
 
 /** The context size the running server was launched with, if it is ours. */

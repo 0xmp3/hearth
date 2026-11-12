@@ -19,6 +19,7 @@ import { useProfiles } from './hooks/useProfiles'
 import { usePrefs } from './hooks/usePrefs'
 import { useNetwork } from './hooks/useNetwork'
 import { useWorkspace } from './hooks/useWorkspace'
+import { useSpeech } from './hooks/useSpeech'
 import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
@@ -27,7 +28,7 @@ import type { ToolPolicy } from './lib/tools'
 import { countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
-import { manager } from './lib/backend'
+import { manager, type SpeechState } from './lib/backend'
 
 /**
  * A <select> can only carry strings, and "inherit the app-wide choice" has no
@@ -67,6 +68,45 @@ export default function App() {
   const net = useNetwork()
   const ws = useWorkspace()
 
+  // Speech is the manager's: this only mirrors whether it can speak, so the UI
+  // can avoid offering a button that would do nothing.
+  const [speechState, setSpeechState] = useState<SpeechState | null>(null)
+  useEffect(() => {
+    let alive = true
+    const read = () =>
+      manager
+        .tts()
+        .then((next) => {
+          if (alive) setSpeechState(next)
+        })
+        .catch(() => {})
+    void read()
+    const onFocus = () => void read()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      alive = false
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
+
+  const readSpeech = () =>
+    manager
+      .tts()
+      .then((next) => setSpeechState(next))
+      .catch(() => {})
+
+  const voiceFor = (message: { characterId?: string | null }): string => {
+    const character = characters.resolve(message.characterId)
+    if (character?.voice) return character.voice
+    if (prefs.speechVoice) return prefs.speechVoice
+    return speechState?.voices[0]?.id ?? ''
+  }
+
+  const speech = useSpeech({
+    enabled: Boolean(speechState?.enabled && speechState?.ready),
+    resolveVoice: voiceFor,
+  })
+
   // What a conversation may use: the manager's switches decide what is
   // possible, the conversation's mode decides what is offered.
   const toolPolicyFor = (conv: { tools?: string }): ToolPolicy => {
@@ -86,6 +126,19 @@ export default function App() {
     resolveProfile: (profileId) => profiles.resolve(profileId),
     tools: toolPolicyFor,
   })
+
+  // Auto-speak fires on the transition, not on every render: the turn ending is
+  // the only moment there is new text to read.
+  const wasStreaming = useRef(false)
+  const latest = useRef({ speech, messages: h.messages, autoSpeak: prefs.autoSpeak })
+  latest.current = { speech, messages: h.messages, autoSpeak: prefs.autoSpeak }
+  useEffect(() => {
+    const ended = wasStreaming.current && !h.streaming
+    wasStreaming.current = h.streaming
+    if (!ended || !latest.current.autoSpeak) return
+    const last = latest.current.messages[latest.current.messages.length - 1]
+    if (last?.role === 'assistant' && last.content.trim()) latest.current.speech.toggle(last)
+  }, [h.streaming])
   const toolMode = h.activeConversation?.tools ?? 'default'
   const t = useTheme()
 
@@ -390,6 +443,11 @@ export default function App() {
           <Chat
             messages={h.messages}
             streaming={h.streaming}
+            speech={
+              speechState?.enabled && speechState?.ready
+                ? { speakingId: speech.speakingId, starting: speech.starting, onToggle: speech.toggle }
+                : undefined
+            }
             showReasoning={prefs.showReasoning}
             resolveIdentity={(characterId) => {
               const p = characters.resolve(characterId)
@@ -446,6 +504,11 @@ export default function App() {
             download(`${t.theme.id}.json`, JSON.stringify(t.theme, null, 2), 'application/json')
           }
           onTheme={t.setTheme}
+          onSpeech={readSpeech}
+          autoSpeak={prefs.autoSpeak}
+          onAutoSpeak={(value) => updatePrefs({ autoSpeak: value })}
+          speechVoice={prefs.speechVoice}
+          onSpeechVoice={(id) => updatePrefs({ speechVoice: id })}
           showReasoning={prefs.showReasoning}
           onShowReasoning={(value) => updatePrefs({ showReasoning: value })}
           maxTokens={prefs.maxTokens}
@@ -481,6 +544,7 @@ export default function App() {
 
       {dialog === 'profile' && (
         <ProfileDialog
+          voices={speechState?.voices ?? []}
           onClose={() => setDialog(null)}
           profiles={profiles.profiles}
           activeProfileId={profiles.activeId}

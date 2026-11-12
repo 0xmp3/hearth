@@ -23,6 +23,10 @@ type Prefs = {
   sidebarCollapsed: boolean
   /** 'sidebar' = conversations down the left, 'tabs' = across the top. */
   layout: 'sidebar' | 'tabs'
+  /** Speak every reply as it finishes. Off until the user asks for it. */
+  autoSpeak: boolean
+  /** Voice id for characters that do not pin one. */
+  speechVoice: string
 }
 
 const DEFAULTS: Prefs = {
@@ -36,6 +40,8 @@ const DEFAULTS: Prefs = {
   showMetrics: false,
   sidebarCollapsed: false,
   layout: 'sidebar',
+  autoSpeak: false,
+  speechVoice: '',
 }
 
 function load(): Prefs {

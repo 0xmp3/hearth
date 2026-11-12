@@ -10,6 +10,8 @@ type Props = {
   user: { name: string; avatar?: string }
   onRegenerate: () => void
   onEdit: (text: string) => void
+  /** Undefined when speech is off: the per-message button then never renders. */
+  speech?: { speakingId: string | null; starting: boolean; onToggle: (message: Msg) => void }
 }
 
 export default function Chat({
@@ -20,6 +22,7 @@ export default function Chat({
   user,
   onRegenerate,
   onEdit,
+  speech,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -64,6 +67,15 @@ export default function Chat({
             isLastUser={i === lastUserIdx}
             onRegenerate={onRegenerate}
             onEdit={onEdit}
+            speech={
+              speech
+                ? {
+                    speaking: speech.speakingId === m.id,
+                    starting: speech.starting && speech.speakingId === m.id,
+                    onToggle: () => speech.onToggle(m),
+                  }
+                : undefined
+            }
           />
         ))
       )}
