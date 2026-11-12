@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import Markdown from './Markdown'
 import Avatar from './Avatar'
 import type { Message as Msg } from '../lib/db'
@@ -38,6 +38,19 @@ function MessageView({
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
+
+  // The thinking block is deliberately *uncontrolled*: `open={!content}` looked
+  // tidy but React re-applied it on every render, so the block collapsed the
+  // moment the answer started and snapped shut again whenever the user opened it
+  // to select text. The browser owns the attribute now; we only set it once, and
+  // only while the user has not touched it.
+  const thinkRef = useRef<HTMLDetailsElement>(null)
+  const thinkTouched = useRef(false)
+  useEffect(() => {
+    const el = thinkRef.current
+    if (!el || thinkTouched.current) return
+    el.open = !message.content
+  }, [message.content])
   const empty = !message.content && !message.reasoning && !message.attachments?.length
   const isUser = message.role === 'user'
 
@@ -55,9 +68,15 @@ function MessageView({
 
       <div className="msg-main">
         {showReasoning && message.reasoning && (
-          <details className="reasoning" open={!message.content}>
-            <summary>thinking</summary>
+          <details className="reasoning" ref={thinkRef}>
+            <summary onClick={() => { thinkTouched.current = true }}>thinking</summary>
             <div>{message.reasoning}</div>
+            <button
+              className="link"
+              onClick={() => void navigator.clipboard.writeText(message.reasoning ?? '')}
+            >
+              copy thinking
+            </button>
           </details>
         )}
 
