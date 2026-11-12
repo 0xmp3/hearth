@@ -30,6 +30,15 @@ function Pre(props: any) {
   )
 }
 
+// The model pads, and every tool round adds a paragraph break, so three or more
+// newlines is always noise. Fenced code is left exactly as written.
+function tidy(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```)/g)
+    .map((part, i) => (i % 2 ? part : part.replace(/\n{3,}/g, '\n\n')))
+    .join('')
+}
+
 function Markdown({ text }: { text: string }) {
   return (
     <ReactMarkdown
@@ -40,7 +49,7 @@ function Markdown({ text }: { text: string }) {
         a: (props: any) => <a {...props} target="_blank" rel="noreferrer" />,
       }}
     >
-      {text}
+      {tidy(text)}
     </ReactMarkdown>
   )
 }

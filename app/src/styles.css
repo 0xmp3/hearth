@@ -574,9 +574,14 @@ button, select, textarea { font: inherit; color: inherit; }
 }
 
 .msg .body {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Only the user's own text is plain: it needs its line breaks kept. The
+   assistant's body is rendered markdown, and pre-wrap there turns the newlines
+   ReactMarkdown emits between blocks into visible blank lines — which is why a
+   single paragraph break looked like five. */
+.msg.user .body { white-space: pre-wrap; }
 
 .msg.user .body { color: var(--text); }
 

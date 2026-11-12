@@ -68,6 +68,11 @@ export const agentTurn: TurnDriver = async (ctx) => {
   let wrote = false
   let fresh = false
   let tail = ''
+  // The same rule for the thinking stream: it is also appended across rounds,
+  // and "Read it.That's all." is the same bug in a different field.
+  let thought = false
+  let freshThought = false
+  let thinkTail = ''
   const say = (text: string) => {
     // Only when the previous round did not already end on a line break: the
     // model often closes its narration with one, and doubling it leaves a gap.
@@ -77,9 +82,17 @@ export const agentTurn: TurnDriver = async (ctx) => {
     tail = (tail + text).slice(-2)
     ctx.append('content', text)
   }
+  const think = (text: string) => {
+    if (!freshThought && thought && !thinkTail.endsWith('\n')) ctx.append('reasoning', '\n\n')
+    freshThought = true
+    thought = true
+    thinkTail = (thinkTail + text).slice(-2)
+    ctx.append('reasoning', text)
+  }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     fresh = false
+    freshThought = false
     const result = await streamChat({
       baseUrl: BASE_URL,
       model: ctx.model,
@@ -88,7 +101,7 @@ export const agentTurn: TurnDriver = async (ctx) => {
       signal: ctx.signal,
       tools: ctx.runTool ? toolList(ctx.tools) : undefined,
       onDelta: say,
-      onReasoning: (text) => ctx.append('reasoning', text),
+      onReasoning: think,
       onStats: ctx.onStats,
     })
 
