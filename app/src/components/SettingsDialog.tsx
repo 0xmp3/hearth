@@ -12,6 +12,7 @@ type Props = {
   onClose: () => void
   onExport: () => void
   onRestore: () => void
+  onClear: () => void
   baseUrl: string
   models: ModelInfo[]
   conversationCount: number
@@ -56,6 +57,7 @@ export default function SettingsDialog({
   onClose,
   onExport,
   onRestore,
+  onClear,
   baseUrl,
   models,
   conversationCount,
@@ -228,6 +230,9 @@ export default function SettingsDialog({
         <div className="row">
           <button onClick={onExport}>Export…</button>
           <button onClick={onRestore}>Restore…</button>
+          <button className="ghost danger" onClick={onClear} disabled={conversationCount === 0}>
+            Clear all chats…
+          </button>
         </div>
       </section>
 

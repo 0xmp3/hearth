@@ -162,6 +162,54 @@ export async function deleteConversation(id: string): Promise<void> {
   })
 }
 
+/**
+ * Delete every conversation, its messages, and the memories that belonged to it.
+ *
+ * What survives is the point: profiles, characters, prompts and global memories
+ * are the user's setup, not their history. "Clear all chats" means "start the
+ * conversation list again", not "factory reset" — a distinction worth keeping
+ * because the destructive version is one word away and much harder to undo.
+ */
+export async function clearConversations(): Promise<{
+  conversations: number
+  messages: number
+  memories: number
+}> {
+  const db = await open()
+  const count = (store: string) =>
+    new Promise<number>((resolve, reject) => {
+      const req = db.transaction(store, 'readonly').objectStore(store).count()
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+
+  const [conversations, messages, memories] = await Promise.all([
+    count('conversations'),
+    count('messages'),
+    count('memories'),
+  ])
+
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction(['conversations', 'messages', 'memories'], 'readwrite')
+    t.objectStore('conversations').clear()
+    t.objectStore('messages').clear()
+    // Only conversation-scoped memories: a summary belongs to its thread, a fact
+    // about the user does not.
+    const idx = t.objectStore('memories').index('scope')
+    const cursorReq = idx.openKeyCursor(IDBKeyRange.only('conversation'))
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result
+      if (!cursor) return
+      t.objectStore('memories').delete(cursor.primaryKey)
+      cursor.continue()
+    }
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+  })
+
+  return { conversations, messages, memories }
+}
+
 export async function listMessages(conversationId: string): Promise<Message[]> {
   const db = await open()
   return new Promise((resolve, reject) => {

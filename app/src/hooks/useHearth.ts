@@ -89,24 +89,32 @@ export function useHearth(
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      // History first, and independently of the backend. A model server that is
+      // not running must not hide the conversations that are already on disk —
+      // that is the difference between "the engine is off" and "my chats are
+      // gone", and only one of those is true.
       try {
-        const [list, convs, mems] = await Promise.all([
-          listModels(BASE_URL),
-          db.listConversations(),
-          db.listMemories(),
-        ])
+        const [convs, mems] = await Promise.all([db.listConversations(), db.listMemories()])
         if (cancelled) return
-        setModels(list)
-        setModel(list[0]?.id ?? '')
         setConversations(convs)
         setMemories(mems)
         if (convs[0]) {
           setActiveId(convs[0].id)
-          setModel(list.some((m) => m.id === convs[0].model) ? convs[0].model : list[0]?.id ?? '')
           setMessages(await db.listMessages(convs[0].id))
         }
       } catch (err) {
         if (!cancelled) setError((err as Error).message)
+      }
+
+      try {
+        const list = await listModels(BASE_URL)
+        if (cancelled) return
+        setModels(list)
+        setModel((current) => resolveModel(current) || list[0]?.id || '')
+      } catch {
+        // No backend: the app still opens, reads and exports. Sending will say
+        // why it cannot.
+        if (!cancelled) setModels([])
       }
     })()
     return () => {

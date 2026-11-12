@@ -7,6 +7,7 @@ import Palette, { type PaletteAction } from './components/Palette'
 import SettingsDialog from './components/SettingsDialog'
 import ProfileDialog from './components/ProfileDialog'
 import ExportDialog from './components/ExportDialog'
+import ClearDialog from './components/ClearDialog'
 import RestoreDialog from './components/RestoreDialog'
 import StatsDialog from './components/StatsDialog'
 import MemoryDialog from './components/MemoryDialog'
@@ -25,7 +26,7 @@ import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
 import { agentTurn } from './lib/turn'
 import type { ToolPolicy } from './lib/tools'
-import { countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
+import { clearConversations, countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
 import { manager, type SpeechState } from './lib/backend'
@@ -46,6 +47,7 @@ type DialogName =
   | 'settings'
   | 'profile'
   | 'export'
+  | 'clear'
   | 'restore'
   | 'stats'
   | 'prompts'
@@ -166,8 +168,9 @@ export default function App() {
       : 'Hearth'
   }, [h.activeConversation?.title])
 
+  // The count is shown in Settings and in the clear dialog, so both refresh it.
   useEffect(() => {
-    if (dialog === 'settings') void countMessages().then(setMessageCount)
+    if (dialog === 'settings' || dialog === 'clear') void countMessages().then(setMessageCount)
   }, [dialog, h.messages.length])
 
   // One place decides what Escape means: palette, then dialog, then stop.
@@ -235,6 +238,21 @@ export default function App() {
   const lastStats = [...h.messages].reverse().find((m) => m.stats?.promptTokens)?.stats
   const ctxUsed = lastStats ? (lastStats.promptTokens ?? 0) + (lastStats.completionTokens ?? 0) : 0
 
+  // Clearing is a data action, not a UI one: the hook re-reads IndexedDB
+  // afterwards, so the sidebar, the chat and the memory panel all agree.
+  async function clearAllChats() {
+    const removed = await clearConversations()
+    await h.reload()
+    await h.refreshMemories()
+    setMessageCount(0)
+    setDialog(null)
+    setNotice(
+      removed.conversations
+        ? `Cleared ${removed.conversations} conversation${removed.conversations === 1 ? '' : 's'}.`
+        : 'There was nothing to clear.',
+    )
+  }
+
   async function exportScope(scope: 'all' | string) {
     if (scope === 'all') {
       const backup = await exportAll()
@@ -272,6 +290,12 @@ export default function App() {
     { id: 'models', label: 'Models', hint: 'browse a folder', run: () => setDialog('models') },
     { id: 'stats', label: 'Stats', hint: 'speed history', run: () => setDialog('stats') },
     { id: 'memory', label: 'Memory', hint: 'what it remembers', run: () => setDialog('memory') },
+    {
+      id: 'clear',
+      label: 'Clear all chats',
+      hint: 'delete every conversation',
+      run: () => setDialog('clear'),
+    },
     { id: 'tools', label: 'Tools in this conversation', hint: 'what this chat may use', run: () => setDialog('tools') },
     { id: 'settings', label: 'Settings', run: () => setDialog('settings') },
     { id: 'profile', label: 'Profiles', run: () => setDialog('profile') },
@@ -493,6 +517,7 @@ export default function App() {
           onClose={() => setDialog(null)}
           onExport={() => setDialog('export')}
           onRestore={() => setDialog('restore')}
+          onClear={() => setDialog('clear')}
           baseUrl={BASE_URL}
           models={h.models}
           conversationCount={h.conversations.length}
@@ -598,6 +623,15 @@ export default function App() {
           onMode={(mode) => void h.setConversationTools(mode === 'default' ? undefined : mode)}
           available={{ web: net.enabled, search: net.searchReady, files: ws.ready }}
           onClose={() => setDialog(null)}
+        />
+      )}
+
+      {dialog === 'clear' && (
+        <ClearDialog
+          conversations={h.conversations.length}
+          messages={messageCount}
+          onClose={() => setDialog(null)}
+          onConfirm={() => void clearAllChats()}
         />
       )}
 
