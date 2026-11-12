@@ -9,6 +9,7 @@ import ProfileDialog from './components/ProfileDialog'
 import ExportDialog from './components/ExportDialog'
 import RestoreDialog from './components/RestoreDialog'
 import StatsDialog from './components/StatsDialog'
+import MemoryDialog from './components/MemoryDialog'
 import PromptsDialog from './components/PromptsDialog'
 import ModelsDialog from './components/ModelsDialog'
 import { useHearth } from './hooks/useHearth'
@@ -22,7 +23,15 @@ import { countMessages, exportAll, importAll, listMessages, searchMessages, type
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
 
-type DialogName = 'settings' | 'profile' | 'export' | 'restore' | 'stats' | 'prompts' | 'models'
+type DialogName =
+  | 'settings'
+  | 'profile'
+  | 'export'
+  | 'restore'
+  | 'stats'
+  | 'prompts'
+  | 'models'
+  | 'memory'
 
 export default function App() {
   const personas = usePersonas()
@@ -154,6 +163,7 @@ export default function App() {
     { id: 'prompts', label: 'Prompt library', run: () => setDialog('prompts') },
     { id: 'models', label: 'Models', hint: 'browse a folder', run: () => setDialog('models') },
     { id: 'stats', label: 'Stats', hint: 'speed history', run: () => setDialog('stats') },
+    { id: 'memory', label: 'Memory', hint: 'what it remembers', run: () => setDialog('memory') },
     { id: 'settings', label: 'Settings', run: () => setDialog('settings') },
     { id: 'profile', label: 'Profiles', run: () => setDialog('profile') },
     { id: 'system', label: 'Toggle system prompt', run: () => setShowSystem((v) => !v) },
@@ -389,6 +399,16 @@ export default function App() {
       )}
 
       {dialog === 'stats' && <StatsDialog onClose={() => setDialog(null)} />}
+
+      {dialog === 'memory' && (
+        <MemoryDialog
+          memories={h.memories}
+          capturing={h.capturing}
+          onClose={() => setDialog(null)}
+          onCapture={h.captureNow}
+          onChanged={h.refreshMemories}
+        />
+      )}
 
       {dialog === 'models' && <ModelsDialog onClose={() => setDialog(null)} />}
 

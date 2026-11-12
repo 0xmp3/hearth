@@ -54,7 +54,9 @@ export function parseBackup(text: string): Backup {
   if (data?.format !== 'hearth-backup') throw new Error('that is not a Hearth backup file')
   // v1 predates personas, v2 predates prompts. Accept older files and treat
   // the missing arrays as empty rather than refusing a valid backup.
-  if (![1, 2, 3].includes(data.version)) throw new Error(`unsupported backup version: ${data.version}`)
+  if (![1, 2, 3, 4].includes(data.version)) {
+    throw new Error(`unsupported backup version: ${data.version}`)
+  }
   if (!Array.isArray(data.personas)) data.personas = []
   if (!Array.isArray(data.prompts)) data.prompts = []
   if (!Array.isArray(data.conversations) || !Array.isArray(data.messages)) {

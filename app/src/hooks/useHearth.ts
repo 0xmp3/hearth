@@ -9,6 +9,12 @@ import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
 import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
 import { toDataUrl, type Attachment } from '../lib/attachments'
+import {
+  CAPTURE_EVERY,
+  applyExtraction,
+  buildMemoryBlock,
+  extractMemories,
+} from '../lib/memory'
 
 export function useHearth(
   turn: TurnDriver = chatTurn,
@@ -23,6 +29,8 @@ export function useHearth(
   const [streaming, setStreaming] = useState(false)
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [memories, setMemories] = useState<db.Memory[]>([])
+  const [capturing, setCapturing] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const draftRef = useRef<db.Message | null>(null)
@@ -52,11 +60,16 @@ export function useHearth(
     let cancelled = false
     ;(async () => {
       try {
-        const [list, convs] = await Promise.all([listModels(BASE_URL), db.listConversations()])
+        const [list, convs, mems] = await Promise.all([
+          listModels(BASE_URL),
+          db.listConversations(),
+          db.listMemories(),
+        ])
         if (cancelled) return
         setModels(list)
         setModel(list[0]?.id ?? '')
         setConversations(convs)
+        setMemories(mems)
         if (convs[0]) {
           setActiveId(convs[0].id)
           setModel(convs[0].model || list[0]?.id || '')
@@ -101,7 +114,9 @@ export function useHearth(
     // Persona first (who you are), then the conversation's own prompt (what
     // this chat is about). Either can be empty.
     const persona = resolvePersona?.(conv.personaId)?.systemPrompt?.trim()
-    const system = [persona, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
+    // Who you are, what is known about the user, what this chat is about.
+    const memory = buildMemoryBlock(memories, conv.id, conv.personaId ?? null)
+    const system = [persona, memory, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n')
     return [
@@ -181,6 +196,10 @@ export function useHearth(
         setMessages((prev) => prev.map((m) => (m.id === finished.id ? { ...finished } : m)))
       }
       if (finished?.content.trim()) void maybeTitle(conv, history, finished.content)
+      // After the reply, not during it: extraction is a second model call.
+      if (finished?.content.trim()) {
+        void db.listMessages(conv.id).then((all) => maybeCapture(conv, all))
+      }
       draftRef.current = null
       abortRef.current = null
       setStreaming(false)
@@ -392,6 +411,37 @@ export function useHearth(
     setConversations(next)
   }
 
+  // ---- memory -----------------------------------------------------------
+  // Runs after a reply, in the background. A capture is a second model call, so
+  // it must never make the user wait for it.
+
+  async function capture(conv: db.Conversation, msgs: db.Message[]) {
+    if (!msgs.length) return { added: 0, removed: 0 }
+    setCapturing(true)
+    try {
+      const existing = await db.listMemories()
+      const extraction = await extractMemories(conv.model || model, msgs, existing)
+      if (!extraction) return { added: 0, removed: 0 }
+
+      const result = await applyExtraction(extraction, existing, conv.id)
+      setMemories(await db.listMemories())
+      await db.setMeta(`memory.capture.${conv.id}`, Date.now())
+      return result
+    } catch {
+      // Background work: a failure here is not worth interrupting a conversation.
+      return { added: 0, removed: 0 }
+    } finally {
+      setCapturing(false)
+    }
+  }
+
+  async function maybeCapture(conv: db.Conversation, msgs: db.Message[]) {
+    const last = (await db.getMeta<number>(`memory.capture.${conv.id}`)) ?? 0
+    const fresh = msgs.filter((m) => m.createdAt > last)
+    if (fresh.length < CAPTURE_EVERY) return
+    await capture(conv, fresh)
+  }
+
   // Fire-and-forget: a failed title request must never affect the reply.
   async function maybeTitle(conv: db.Conversation, history: ChatMessage[], reply: string) {
     const first = history.find((m) => m.role === 'user')
@@ -476,5 +526,13 @@ export function useHearth(
     reload,
     reloadModels,
     togglePin,
+    memories,
+    capturing,
+    captureNow: async () => {
+      const conv = conversations.find((c) => c.id === activeId)
+      if (!conv) return { added: 0, removed: 0 }
+      return capture(conv, await db.listMessages(conv.id))
+    },
+    refreshMemories: async () => setMemories(await db.listMemories()),
   }
 }

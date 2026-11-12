@@ -261,6 +261,29 @@ button, select, textarea { font: inherit; color: inherit; }
   padding: 0 var(--space-4) var(--space-6);
 }
 
+.memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.memory-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.memory-item:hover { background: var(--raised); }
+
+.memory-text { flex: 1; min-width: 0; font-size: 12.5px; }
+
+.memory-item input { flex: 1; }
+
 .metrics-strip {
   border-top: 1px solid var(--border);
   padding: var(--space-3) var(--space-5);

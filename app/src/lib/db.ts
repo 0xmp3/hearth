@@ -47,7 +47,7 @@ export type Message = {
 }
 
 const DB_NAME = 'hearth'
-const DB_VERSION = 4
+const DB_VERSION = 5
 
 let handle: Promise<IDBDatabase> | null = null
 
@@ -75,6 +75,11 @@ function open(): Promise<IDBDatabase> {
       // v4. Small key-value store: directory handles, model notes.
       if (!db.objectStoreNames.contains('meta')) {
         db.createObjectStore('meta', { keyPath: 'key' })
+      }
+      // v5. Durable facts, written by the extraction pass or by hand.
+      if (!db.objectStoreNames.contains('memories')) {
+        const store = db.createObjectStore('memories', { keyPath: 'id' })
+        store.createIndex('scope', 'scope')
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -208,12 +213,14 @@ export type Prompt = {
 
 export type Backup = {
   format: 'hearth-backup'
-  version: 3
+  version: 4
   exportedAt: string
   conversations: Conversation[]
   messages: Message[]
   personas: Persona[]
   prompts: Prompt[]
+  /** v4. Absent in older backups, which is why every read of it is `?? []`. */
+  memories: Memory[]
 }
 
 export function makeBackup(
@@ -221,15 +228,17 @@ export function makeBackup(
   messages: Message[],
   personas: Persona[] = [],
   prompts: Prompt[] = [],
+  memories: Memory[] = [],
 ): Backup {
   return {
     format: 'hearth-backup',
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     conversations,
     messages,
     personas,
     prompts,
+    memories,
   }
 }
 
@@ -243,14 +252,15 @@ export async function exportAll(): Promise<Backup> {
       req.onerror = () => reject(req.error)
     })
 
-  const [conversations, messages, personas, prompts] = await Promise.all([
+  const [conversations, messages, personas, prompts, memories] = await Promise.all([
     read<Conversation>('conversations'),
     read<Message>('messages'),
     read<Persona>('personas'),
     read<Prompt>('prompts'),
+    read<Memory>('memories'),
   ])
 
-  return makeBackup(conversations, messages, personas, prompts)
+  return makeBackup(conversations, messages, personas, prompts, memories)
 }
 
 // Merge, never replace: restoring into an empty database brings everything
@@ -259,20 +269,35 @@ export async function exportAll(): Promise<Backup> {
 export async function importAll(
   backup: Backup,
   only?: string[],
-): Promise<{ conversations: number; messages: number; personas: number; prompts: number }> {
+): Promise<{
+  conversations: number
+  messages: number
+  personas: number
+  prompts: number
+  memories: number
+}> {
   const conversations = only ? backup.conversations.filter((c) => only.includes(c.id)) : backup.conversations
   const ids = new Set(conversations.map((c) => c.id))
   const messages = backup.messages.filter((m) => ids.has(m.conversationId))
   const personas = backup.personas ?? []
   const prompts = backup.prompts ?? []
+  // Global and persona memories are not tied to a conversation, so a partial
+  // restore keeps them. Conversation-scoped ones follow their conversation.
+  const memories = (backup.memories ?? []).filter(
+    (m) => m.scope !== 'conversation' || !m.ownerId || ids.has(m.ownerId),
+  )
 
   const db = await open()
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'messages', 'personas', 'prompts'], 'readwrite')
+    const t = db.transaction(
+      ['conversations', 'messages', 'personas', 'prompts', 'memories'],
+      'readwrite',
+    )
     for (const c of conversations) t.objectStore('conversations').put(c)
     for (const m of messages) t.objectStore('messages').put(m)
     for (const p of personas) t.objectStore('personas').put(p)
     for (const p of prompts) t.objectStore('prompts').put(p)
+    for (const m of memories) t.objectStore('memories').put(m)
     t.oncomplete = () => resolve()
     t.onerror = () => reject(t.error)
   })
@@ -282,6 +307,7 @@ export async function importAll(
     messages: messages.length,
     personas: personas.length,
     prompts: prompts.length,
+    memories: memories.length,
   }
 }
 
@@ -364,6 +390,35 @@ export function putPrompt(p: Prompt): Promise<IDBValidKey> {
 
 export async function deletePrompt(id: string): Promise<void> {
   await tx('prompts', 'readwrite', (s) => s.delete(id))
+}
+
+// ---- memories ------------------------------------------------------------
+
+export type MemoryScope = 'global' | 'conversation' | 'persona'
+
+export type Memory = {
+  id: string
+  text: string
+  scope: MemoryScope
+  /** The conversation or persona this belongs to, when the scope needs one. */
+  ownerId?: string
+  createdAt: number
+  updatedAt: number
+  /** Where it came from, so the review panel can say. */
+  sourceConversationId?: string
+}
+
+export async function listMemories(): Promise<Memory[]> {
+  const all = await tx<Memory[]>('memories', 'readonly', (s) => s.getAll())
+  return all.sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export function putMemory(m: Memory): Promise<IDBValidKey> {
+  return tx('memories', 'readwrite', (s) => s.put(m))
+}
+
+export function deleteMemory(id: string): Promise<undefined> {
+  return tx('memories', 'readwrite', (s) => s.delete(id))
 }
 
 export function newId(): string {
