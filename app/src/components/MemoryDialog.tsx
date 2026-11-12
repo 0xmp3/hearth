@@ -11,8 +11,11 @@ import * as db from '../lib/db'
 type Props = {
   memories: db.Memory[]
   capturing: boolean
+  condensing: boolean
   onClose: () => void
   onCapture: () => Promise<{ added: number; removed: number }>
+  /** Condense the oldest turns of the open conversation. Null when it refused. */
+  onCondense: () => Promise<{ condensed: number; total: number } | null>
   onChanged: () => Promise<void>
 }
 
@@ -25,8 +28,10 @@ const SCOPE_LABEL: Record<db.MemoryScope, string> = {
 export default function MemoryDialog({
   memories,
   capturing,
+  condensing,
   onClose,
   onCapture,
+  onCondense,
   onChanged,
 }: Props) {
   const [draft, setDraft] = useState('')
@@ -73,6 +78,20 @@ export default function MemoryDialog({
     await onChanged()
   }
 
+  async function condense() {
+    setNote(null)
+    const result = await onCondense()
+    setNote(
+      result
+        ? `condensed ${result.condensed} messages into a summary covering ${result.total}`
+        : 'nothing to condense yet — needs a longer conversation',
+    )
+    await onChanged()
+  }
+
+  // A summary is not a fact, and it is too long to sit in the fact lists.
+  const summaries = memories.filter((m) => m.kind === 'summary')
+  const facts = memories.filter((m) => m.kind !== 'summary')
   const groups: db.MemoryScope[] = ['global', 'conversation', 'character']
 
   return (
@@ -81,6 +100,9 @@ export default function MemoryDialog({
       onClose={onClose}
       footer={
         <>
+          <button className="ghost" onClick={() => void condense()} disabled={condensing}>
+            {condensing ? 'Condensing…' : 'Condense now'}
+          </button>
           <button className="ghost" onClick={() => void capture()} disabled={capturing}>
             {capturing ? 'Reading…' : 'Capture now'}
           </button>
@@ -110,11 +132,64 @@ export default function MemoryDialog({
 
       {note && <p className="hint">{note}</p>}
 
-      {memories.length === 0 ? (
+      {summaries.length > 0 && (
+        <section className="setting">
+          <h3>Condensed history</h3>
+          <p className="hint">
+            The oldest turns of this conversation, summarised and sent in their place. The
+            transcript itself is untouched — delete the summary and the whole thing is sent again.
+          </p>
+          <ul className="memory-list">
+            {summaries.map((m) => (
+              <li key={m.id} className="memory-item">
+                {editing === m.id ? (
+                  <>
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      rows={6}
+                      autoFocus
+                    />
+                    <button className="ghost tiny" onClick={() => void saveEdit(m)}>
+                      save
+                    </button>
+                    <button className="ghost tiny" onClick={() => setEditing(null)}>
+                      cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="memory-text">
+                      <span className="character-note">
+                        {m.messageCount ? `${m.messageCount} messages` : 'earlier turns'}
+                      </span>
+                      {m.text}
+                    </span>
+                    <button
+                      className="ghost tiny"
+                      onClick={() => {
+                        setEditing(m.id)
+                        setEditText(m.text)
+                      }}
+                    >
+                      edit
+                    </button>
+                    <button className="ghost tiny" onClick={() => void remove(m.id)}>
+                      ×
+                    </button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {facts.length === 0 && summaries.length === 0 ? (
         <p className="hint">Nothing remembered yet.</p>
       ) : (
         groups.map((scope) => {
-          const items = memories.filter((m) => m.scope === scope)
+          const items = facts.filter((m) => m.scope === scope)
           if (!items.length) return null
           return (
             <section key={scope} className="setting">

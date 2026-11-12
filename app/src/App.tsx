@@ -460,8 +460,10 @@ export default function App() {
         <MemoryDialog
           memories={h.memories}
           capturing={h.capturing}
+          condensing={h.condensing}
           onClose={() => setDialog(null)}
           onCapture={h.captureNow}
+          onCondense={h.condenseNow}
           onChanged={h.refreshMemories}
         />
       )}

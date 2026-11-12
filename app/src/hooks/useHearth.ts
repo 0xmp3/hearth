@@ -16,6 +16,14 @@ import {
   buildMemoryBlock,
   extractMemories,
 } from '../lib/memory'
+import {
+  buildSummaryBlock,
+  compactConversation,
+  currentSummary,
+  factsOf,
+  historyAfter,
+  shouldCompact,
+} from '../lib/compaction'
 
 export function useHearth(
   turn: TurnDriver = agentTurn,
@@ -33,6 +41,7 @@ export function useHearth(
   const [error, setError] = useState<string | null>(null)
   const [memories, setMemories] = useState<db.Memory[]>([])
   const [capturing, setCapturing] = useState(false)
+  const [condensing, setCondensing] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const draftRef = useRef<db.Message | null>(null)
@@ -118,18 +127,31 @@ export function useHearth(
     const character = resolveCharacter?.(conv.characterId)?.systemPrompt?.trim()
     // Who you are, who the model is, what is known about the user, what this chat is about.
     const profile = resolveProfile?.(conv.profileId)?.description?.trim()
-    const memory = buildMemoryBlock(memories, conv.id, conv.characterId ?? null)
+    // Read fresh rather than from state: a fact or a summary written by the
+    // background passes after the last render must be in this request.
+    const stored = await db.listMemories()
+    const summary = currentSummary(stored, conv.id)
+    const memory = buildMemoryBlock(stored, conv.id, conv.characterId ?? null)
     // Tools are on for every turn, so the guidance is always relevant.
-    const system = [profile, character, memory, TOOL_GUIDANCE, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
+    const system = [
+      profile,
+      character,
+      buildSummaryBlock(summary),
+      memory,
+      TOOL_GUIDANCE,
+      conv.systemPrompt?.trim() || SYSTEM_PROMPT,
+    ]
       .filter(Boolean)
       .join('\n\n')
+    // The oldest turns are represented by the summary, not sent again.
+    const live = historyAfter(msgs, summary)
     return [
       ...(system ? [{ role: 'system' as const, content: system }] : []),
       // An assistant turn that produced no text (thinking ate the budget, or
       // the user stopped it before the first token) is noise to the model and
       // makes it reason about "the empty response" instead of the question.
       ...(await Promise.all(
-        msgs
+        live
           .filter((m) => m.content.trim().length > 0 || (m.attachments?.length ?? 0) > 0)
           .map(toChatMessage),
       )),
@@ -141,6 +163,16 @@ export function useHearth(
   // the turn started, so finishing a reply silently reverted an edit made during
   // it — the profile override written mid-stream was gone after the reply landed.
   // Every write reads the freshest copy from here instead.
+  // llama-server has one slot by default, and two background model calls issued
+  // at once collide ("failed to find a memory slot"): the reply lands and both
+  // the extraction pass and the compaction pass fire. Serialise them. It also
+  // keeps the two writers to the memory store from interleaving.
+  const bgRef = useRef<Promise<unknown>>(Promise.resolve())
+  function inBackground(task: () => Promise<unknown>): Promise<unknown> {
+    bgRef.current = bgRef.current.then(task, task)
+    return bgRef.current
+  }
+
   const convsRef = useRef<db.Conversation[]>([])
   useEffect(() => {
     convsRef.current = conversations
@@ -222,10 +254,22 @@ export function useHearth(
       if (finished) {
         setMessages((prev) => prev.map((m) => (m.id === finished.id ? { ...finished } : m)))
       }
-      if (finished?.content.trim()) void maybeTitle(conv, history, finished.content)
+      if (finished?.content.trim()) void inBackground(() => maybeTitle(conv, history, finished.content))
       // After the reply, not during it: extraction is a second model call.
       if (finished?.content.trim()) {
-        void db.listMessages(conv.id).then((all) => maybeCapture(conv, all))
+        void inBackground(() => db.listMessages(conv.id).then((all) => maybeCapture(conv, all)))
+      }
+      // Compaction is triggered by measured pressure — what the request actually
+      // cost — and deliberately not gated on the reply having content: a reply
+      // that ran out of budget is exactly the case where the next request most
+      // needs a shorter history.
+      // `promptTokens` is only the tokens processed fresh in the *last* round;
+      // in a tool loop that is a small continuation. The context the request
+      // actually occupied is fresh + cached, which is the number that matters
+      // here — measured 15 + 2,253 on a round whose real prompt was 2.3k.
+      if (finished?.stats?.promptTokens) {
+        const used = (finished.stats.promptTokens ?? 0) + (finished.stats.cacheN ?? 0)
+        void inBackground(() => maybeCompact(conv, used))
       }
       draftRef.current = null
       abortRef.current = null
@@ -265,6 +309,13 @@ export function useHearth(
   async function remove(id: string) {
     if (streaming) return
     await db.deleteConversation(id)
+    // What was only ever true for this conversation goes with it — including
+    // its summary, which would otherwise be an orphan record describing a
+    // transcript that no longer exists.
+    const stored = await db.listMemories()
+    const own = stored.filter((m) => m.scope === 'conversation' && m.ownerId === id)
+    for (const m of own) await db.deleteMemory(m.id)
+    if (own.length) setMemories((prev) => prev.filter((m) => !own.some((o) => o.id === m.id)))
     const remaining = conversations.filter((c) => c.id !== id)
     setConversations(remaining)
 
@@ -457,7 +508,9 @@ export function useHearth(
     if (!msgs.length) return { added: 0, removed: 0 }
     setCapturing(true)
     try {
-      const existing = await db.listMemories()
+      // Facts only: a summary is not a fact, and must never be offered to the
+      // model as something it can retire.
+      const existing = factsOf(await db.listMemories())
       const extraction = await extractMemories(conv.model || model, msgs, existing)
       if (!extraction) return { added: 0, removed: 0 }
 
@@ -478,6 +531,47 @@ export function useHearth(
     const fresh = msgs.filter((m) => m.createdAt > last)
     if (fresh.length < CAPTURE_EVERY) return
     await capture(conv, fresh)
+  }
+
+  // ---- compaction -------------------------------------------------------
+  // The other half of memory: a long conversation keeps its beginning without
+  // paying for it on every request. The summary goes into the same store the
+  // facts use, so it is inspectable, editable and deletable in the same panel.
+
+  async function condense(conv: db.Conversation, msgs?: db.Message[]) {
+    const all = msgs ?? (await db.listMessages(conv.id))
+    const summary = currentSummary(await db.listMemories(), conv.id)
+    // Sized to the server's allocation: a summary that overflows the context
+    // fails with a 400 and looks like the feature is broken.
+    const ctx = models.find((m) => m.id === (conv.model || model))?.ctx ?? 0
+    setCondensing(true)
+    try {
+      const result = await compactConversation({
+        conversationId: conv.id,
+        model: conv.model || model,
+        messages: all,
+        summary,
+        ctx,
+      })
+      if (!result) return null
+      setMemories(await db.listMemories())
+      return result
+    } catch {
+      // Background work: a failed summary is not worth interrupting a chat.
+      return null
+    } finally {
+      setCondensing(false)
+    }
+  }
+
+  /** Fires only when the last request really did fill most of the context. */
+  async function maybeCompact(conv: db.Conversation, promptTokens: number) {
+    const ctx = models.find((m) => m.id === (conv.model || model))?.ctx ?? 0
+    if (!ctx || !promptTokens) return
+    const msgs = await db.listMessages(conv.id)
+    const summary = currentSummary(await db.listMemories(), conv.id)
+    if (!shouldCompact({ ctx, promptTokens, messages: msgs, summary })) return
+    await condense(conv, msgs)
   }
 
   // Fire-and-forget: a failed title request must never affect the reply.
@@ -570,6 +664,12 @@ export function useHearth(
     togglePin,
     memories,
     capturing,
+    condensing,
+    condenseNow: async () => {
+      const conv = conversations.find((c) => c.id === activeId)
+      if (!conv) return null
+      return condense(conv)
+    },
     captureNow: async () => {
       const conv = conversations.find((c) => c.id === activeId)
       if (!conv) return { added: 0, removed: 0 }

@@ -456,6 +456,17 @@ export type Memory = {
   scope: MemoryScope
   /** The conversation or character this belongs to, when the scope needs one. */
   ownerId?: string
+  /**
+   * A condensed conversation rather than a fact. Summaries live in the same
+   * store because they travel the same injection path, but they are not facts:
+   * the extraction pass never sees them, and deleting one restores the full
+   * transcript to the request.
+   */
+  kind?: 'fact' | 'summary'
+  /** Summaries only: everything up to and including this message is covered. */
+  throughMessageId?: string
+  /** Summaries only: how many messages that is, in total. */
+  messageCount?: number
   createdAt: number
   updatedAt: number
   /** Where it came from, so the review panel can say. */
