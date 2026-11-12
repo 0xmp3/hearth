@@ -35,7 +35,7 @@ const SCHEMA = {
         type: 'object',
         properties: {
           text: { type: 'string' },
-          scope: { type: 'string', enum: ['global', 'conversation', 'persona'] },
+          scope: { type: 'string', enum: ['global', 'conversation', 'character'] },
         },
         required: ['text', 'scope'],
         additionalProperties: false,
@@ -55,7 +55,7 @@ Return only facts that are NEW or that REPLACE an existing one.
 "add" — new facts. Each is one short sentence, third person, about the user.
   scope "global"       true in every conversation (preferences, projects, hardware, skills)
   scope "conversation" only true for this conversation (a decision made here)
-  scope "persona"      only true when talking to a particular character
+  scope "character"      only true when talking to a particular character
 "remove" — ids from the existing list that are now wrong or superseded. Ids only, never text.
   If nothing is superseded, return an empty array.
 
@@ -148,7 +148,7 @@ export async function extractMemories(
           return (
             typeof o.text === 'string' &&
             o.text.trim().length > 0 &&
-            (o.scope === 'global' || o.scope === 'conversation' || o.scope === 'persona')
+            (o.scope === 'global' || o.scope === 'conversation' || o.scope === 'character')
           )
         })
         .map((a) => ({ text: a.text.trim(), scope: a.scope })),
@@ -208,12 +208,12 @@ export async function applyExtraction(
 export function buildMemoryBlock(
   memories: db.Memory[],
   conversationId: string | null,
-  personaId: string | null,
+  characterId: string | null,
 ): string {
   const relevant = memories.filter((m) => {
     if (m.scope === 'global') return true
     if (m.scope === 'conversation') return m.ownerId === conversationId
-    if (m.scope === 'persona') return m.ownerId === personaId
+    if (m.scope === 'character') return m.ownerId === characterId
     return false
   })
 

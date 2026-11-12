@@ -19,7 +19,7 @@ type Props = {
 const SCOPE_LABEL: Record<db.MemoryScope, string> = {
   global: 'Everywhere',
   conversation: 'This conversation',
-  persona: 'This character',
+  character: 'This character',
 }
 
 export default function MemoryDialog({
@@ -73,7 +73,7 @@ export default function MemoryDialog({
     await onChanged()
   }
 
-  const groups: db.MemoryScope[] = ['global', 'conversation', 'persona']
+  const groups: db.MemoryScope[] = ['global', 'conversation', 'character']
 
   return (
     <Dialog

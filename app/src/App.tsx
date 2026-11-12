@@ -13,7 +13,8 @@ import MemoryDialog from './components/MemoryDialog'
 import PromptsDialog from './components/PromptsDialog'
 import ModelsDialog from './components/ModelsDialog'
 import { useHearth } from './hooks/useHearth'
-import { usePersonas } from './hooks/usePersonas'
+import { useCharacters } from './hooks/useCharacters'
+import { useProfiles } from './hooks/useProfiles'
 import { usePrefs } from './hooks/usePrefs'
 import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
@@ -34,12 +35,23 @@ type DialogName =
   | 'memory'
 
 export default function App() {
-  const personas = usePersonas()
+  const characters = useCharacters()
   const prompts = usePrompts()
   const { prefs, update: updatePrefs } = usePrefs()
+  // Seeded once from the old preferences, so an existing name is not lost.
+  const profiles = useProfiles({ name: prefs.userName, avatar: prefs.userAvatar })
+  const user = {
+    name: profiles.active?.name || 'User',
+    avatar: profiles.active?.avatar || undefined,
+  }
   // agentTurn, not chatTurn: it runs tools and falls back to a single call when
   // there are none. Passing chatTurn here silently disabled the tool loop.
-  const h = useHearth(agentTurn, (personaId) => personas.resolve(personaId), prefs.maxTokens)
+  const h = useHearth(
+    agentTurn,
+    (characterId) => characters.resolve(characterId),
+    prefs.maxTokens,
+    (profileId) => profiles.resolve(profileId),
+  )
   const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)
@@ -120,10 +132,10 @@ export default function App() {
   // measured rather than estimated.
   // undefined inherits the globally active profile; null means none.
   const characterValue = h.activeConversation
-    ? h.activeConversation.personaId === null
+    ? h.activeConversation.characterId === null
       ? ''
-      : (h.activeConversation.personaId ?? personas.activeId ?? '')
-    : (personas.activeId ?? '')
+      : (h.activeConversation.characterId ?? characters.activeId ?? '')
+    : (characters.activeId ?? '')
 
   const ctxTotal = h.models.find((m) => m.id === h.model)?.ctx ?? 8192
   const lastStats = [...h.messages].reverse().find((m) => m.stats?.promptTokens)?.stats
@@ -139,7 +151,7 @@ export default function App() {
     const conv = h.conversations.find((c) => c.id === scope)
     if (!conv) return
     const messages = await listMessages(conv.id)
-    download(`${slug(conv.title)}.json`, toJson(conv, messages, personas.personas), 'application/json')
+    download(`${slug(conv.title)}.json`, toJson(conv, messages, characters.characters), 'application/json')
     setNotice(`Exported “${conv.title}”.`)
   }
 
@@ -189,7 +201,7 @@ export default function App() {
           conversations={h.conversations}
           activeId={h.activeId}
           disabled={h.streaming}
-          user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
+          user={user}
           onSelect={h.select}
           onCreate={h.create}
           onDelete={(id) => setConfirmDelete(id)}
@@ -210,7 +222,7 @@ export default function App() {
           disabled={h.streaming}
           collapsed={prefs.sidebarCollapsible && prefs.sidebarCollapsed}
           collapsible={prefs.sidebarCollapsible}
-          user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
+          user={user}
           model={h.model}
           showMetrics={prefs.showMetrics}
           onToggleCollapse={() => updatePrefs({ sidebarCollapsed: !prefs.sidebarCollapsed })}
@@ -241,16 +253,16 @@ export default function App() {
               ))}
             </select>
 
-            {personas.personas.length > 0 && (
+            {characters.characters.length > 0 && (
               <select
                 className="model character"
                 value={characterValue}
-                onChange={(e) => void h.setConversationPersona(e.target.value === '' ? null : e.target.value)}
+                onChange={(e) => void h.setConversationCharacter(e.target.value === '' ? null : e.target.value)}
                 disabled={h.streaming || !h.activeConversation}
                 title="Character for this conversation"
               >
                 <option value="">no character</option>
-                {personas.personas.map((p) => (
+                {characters.characters.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
@@ -295,14 +307,14 @@ export default function App() {
             messages={h.messages}
             streaming={h.streaming}
             showReasoning={prefs.showReasoning}
-            resolveIdentity={(personaId) => {
-              const p = personas.resolve(personaId)
+            resolveIdentity={(characterId) => {
+              const p = characters.resolve(characterId)
               return {
                 name: p?.name ?? (prefs.assistantName || 'Hearth'),
                 avatar: p?.avatar ?? (prefs.assistantAvatar || undefined),
               }
             }}
-            user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
+            user={user}
             onRegenerate={h.regenerate}
             onEdit={h.editLast}
           />
@@ -352,8 +364,6 @@ export default function App() {
           onTheme={t.setTheme}
           showReasoning={prefs.showReasoning}
           onShowReasoning={(value) => updatePrefs({ showReasoning: value })}
-          userName={prefs.userName}
-          onUserName={(value) => updatePrefs({ userName: value })}
           maxTokens={prefs.maxTokens}
           onMaxTokens={(value) => updatePrefs({ maxTokens: value })}
           modelCtx={ctxTotal}
@@ -371,13 +381,16 @@ export default function App() {
       {dialog === 'profile' && (
         <ProfileDialog
           onClose={() => setDialog(null)}
-          personas={personas.personas}
-          activeId={personas.activeId}
-          onSelect={personas.select}
-          onSave={personas.save}
-          onRemove={personas.remove}
-          user={{ name: prefs.userName || 'User', avatar: prefs.userAvatar || undefined }}
-          onUserAvatar={(url) => updatePrefs({ userAvatar: url })}
+          profiles={profiles.profiles}
+          activeProfileId={profiles.activeId}
+          onSelectProfile={profiles.select}
+          onSaveProfile={profiles.save}
+          onRemoveProfile={profiles.remove}
+          characters={characters.characters}
+          activeCharacterId={characters.activeId}
+          onSelectCharacter={characters.select}
+          onSaveCharacter={characters.save}
+          onRemoveCharacter={characters.remove}
           assistant={{
             name: prefs.assistantName || 'Hearth',
             avatar: prefs.assistantAvatar || undefined,

@@ -90,7 +90,7 @@ export default function RestoreDialog({ onClose, onRestore }: Props) {
           <p className="hint">
             {backup.conversations.length} conversation
             {backup.conversations.length === 1 ? '' : 's'} in this file
-            {backup.personas?.length ? `, ${backup.personas.length} profile${backup.personas.length === 1 ? '' : 's'}` : ''}
+            {backup.characters?.length ? `, ${backup.characters.length} profile${backup.characters.length === 1 ? '' : 's'}` : ''}
             . Restoring merges by id — nothing already here is deleted.
           </p>
 

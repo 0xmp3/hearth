@@ -1268,9 +1268,9 @@ button.link.tok { font-family: var(--font-mono); font-size: 11px; }
 
 .picker-empty { color: var(--faint); cursor: default; }
 
-.persona-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.character-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 
-.persona-list li {
+.character-list li {
   display: flex;
   align-items: center;
   gap: var(--space-4);
@@ -1279,9 +1279,9 @@ button.link.tok { font-family: var(--font-mono); font-size: 11px; }
   border: 1px solid transparent;
 }
 
-.persona-list li.active { border-color: var(--accent); background: var(--raised); }
+.character-list li.active { border-color: var(--accent); background: var(--raised); }
 
-.persona-pick {
+.character-pick {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1295,9 +1295,9 @@ button.link.tok { font-family: var(--font-mono); font-size: 11px; }
   color: var(--text);
 }
 
-.persona-name { font-size: 13.5px; }
-.persona-note { font-size: 11.5px; color: var(--faint); }
-.persona-actions { display: flex; gap: var(--space-4); }
+.character-name { font-size: 13.5px; }
+.character-note { font-size: 11.5px; color: var(--faint); }
+.character-actions { display: flex; gap: var(--space-4); }
 
 .you-row {
   display: flex;
@@ -1337,7 +1337,7 @@ input[type='range'] {
   background: transparent;
 }
 
-.persona-form {
+.character-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);

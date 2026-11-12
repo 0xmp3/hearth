@@ -19,8 +19,9 @@ import {
 
 export function useHearth(
   turn: TurnDriver = agentTurn,
-  resolvePersona?: (personaId: string | null | undefined) => db.Persona | null,
+  resolveCharacter?: (characterId: string | null | undefined) => db.Character | null,
   maxTokens = 2048,
+  resolveProfile?: (profileId: string | null | undefined) => db.Profile | null,
 ) {
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -112,13 +113,14 @@ export function useHearth(
   }
 
   async function buildHistory(msgs: db.Message[], conv: db.Conversation): Promise<ChatMessage[]> {
-    // Persona first (who you are), then the conversation's own prompt (what
+    // Character first (who you are), then the conversation's own prompt (what
     // this chat is about). Either can be empty.
-    const persona = resolvePersona?.(conv.personaId)?.systemPrompt?.trim()
-    // Who you are, what is known about the user, what this chat is about.
-    const memory = buildMemoryBlock(memories, conv.id, conv.personaId ?? null)
+    const character = resolveCharacter?.(conv.characterId)?.systemPrompt?.trim()
+    // Who you are, who the model is, what is known about the user, what this chat is about.
+    const profile = resolveProfile?.(conv.profileId)?.description?.trim()
+    const memory = buildMemoryBlock(memories, conv.id, conv.characterId ?? null)
     // Tools are on for every turn, so the guidance is always relevant.
-    const system = [persona, memory, TOOL_GUIDANCE, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
+    const system = [profile, character, memory, TOOL_GUIDANCE, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n')
     return [
@@ -278,10 +280,10 @@ export function useHearth(
 
   // The character belongs to the conversation, so switching it mid-thread only
   // affects what comes next.
-  async function setConversationPersona(personaId: string | null) {
+  async function setConversationCharacter(characterId: string | null) {
     const conv = conversations.find((c) => c.id === activeId)
     if (!conv) return
-    const updated = { ...conv, personaId }
+    const updated = { ...conv, characterId }
     await db.putConversation(updated)
     setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
   }
@@ -335,7 +337,7 @@ export function useHearth(
       role: 'assistant',
       content: '',
       createdAt: now + 1,
-      personaId: resolvePersona?.(conv.personaId)?.id ?? null,
+      characterId: resolveCharacter?.(conv.characterId)?.id ?? null,
     }
 
     const next = [...messages, userMsg]
@@ -363,7 +365,7 @@ export function useHearth(
       role: 'assistant',
       content: '',
       createdAt: Date.now(),
-      personaId: resolvePersona?.(conv.personaId)?.id ?? null,
+      characterId: resolveCharacter?.(conv.characterId)?.id ?? null,
     }
 
     setMessages([...kept, assistantMsg])
@@ -396,7 +398,7 @@ export function useHearth(
       role: 'assistant',
       content: '',
       createdAt: Date.now(),
-      personaId: resolvePersona?.(conv.personaId)?.id ?? null,
+      characterId: resolveCharacter?.(conv.characterId)?.id ?? null,
     }
 
     setMessages([...kept, assistantMsg])
@@ -526,7 +528,7 @@ export function useHearth(
     model,
     setModel: changeModel,
     setSystemPrompt,
-    setConversationPersona,
+    setConversationCharacter,
     streaming,
     stats,
     error,

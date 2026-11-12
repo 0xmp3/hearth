@@ -429,24 +429,24 @@
 
 [data-chrome='win95'] .choice,
 [data-chrome='win95'] .picker-list,
-[data-chrome='win95'] .persona-list li {
+[data-chrome='win95'] .character-list li {
   border-radius: 0;
 }
 
 [data-chrome='win95'] .picker-list li,
-[data-chrome='win95'] .persona-list li {
+[data-chrome='win95'] .character-list li {
   border-radius: 0;
   font-size: 12px;
 }
 
 [data-chrome='win95'] .picker-list li.active,
-[data-chrome='win95'] .persona-list li.active {
+[data-chrome='win95'] .character-list li.active {
   background: var(--accent);
   color: var(--on-accent);
 }
 
-[data-chrome='win95'] .persona-list li.active .persona-note,
-[data-chrome='win95'] .persona-list li.active .persona-name {
+[data-chrome='win95'] .character-list li.active .character-note,
+[data-chrome='win95'] .character-list li.active .character-name {
   color: var(--on-accent);
 }
 

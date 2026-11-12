@@ -15,6 +15,13 @@ export type Conversation = {
    * `undefined` = inherit the globally active profile (older conversations).
    * `null` = explicitly no character.
    */
+  characterId?: string | null
+  /**
+   * Who you are in this conversation.
+   * `undefined` = inherit the globally active profile, `null` = explicitly none.
+   */
+  profileId?: string | null
+  /** Pre-rename field, still read for old records. */
   personaId?: string | null
 }
 
@@ -29,7 +36,7 @@ export type Message = {
   createdAt: number
   aborted?: boolean
   /** The character that produced this reply, so history stays accurate. */
-  personaId?: string | null
+  characterId?: string | null
   /** The budget ran out before any answer was produced. */
   truncated?: boolean
   /** Files sent with this message. Text is inlined; images go as content parts. */
@@ -49,7 +56,7 @@ export type Message = {
 }
 
 const DB_NAME = 'hearth'
-const DB_VERSION = 5
+const DB_VERSION = 6
 
 let handle: Promise<IDBDatabase> | null = null
 
@@ -67,6 +74,9 @@ function open(): Promise<IDBDatabase> {
         store.createIndex('conversationId', 'conversationId')
       }
       // v2. Guarded so an upgrade from v1 adds it without touching the rest.
+      // The store key still says "personas" from before the rename. Changing it
+      // would mean copying every record for no user-visible benefit, so the key
+      // is an implementation detail and the API speaks "characters".
       if (!db.objectStoreNames.contains('personas')) {
         db.createObjectStore('personas', { keyPath: 'id' })
       }
@@ -82,6 +92,10 @@ function open(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('memories')) {
         const store = db.createObjectStore('memories', { keyPath: 'id' })
         store.createIndex('scope', 'scope')
+      }
+      // v6. Who the user is, as an entity rather than a name in preferences.
+      if (!db.objectStoreNames.contains('profiles')) {
+        db.createObjectStore('profiles', { keyPath: 'id' })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -194,7 +208,7 @@ export async function searchMessages(query: string, limit = 20): Promise<SearchH
   return hits.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit)
 }
 
-export type Persona = {
+export type Character = {
   id: string
   name: string
   /** One line about who this is, shown in the picker. */
@@ -215,32 +229,36 @@ export type Prompt = {
 
 export type Backup = {
   format: 'hearth-backup'
-  version: 4
+  version: 5
   exportedAt: string
   conversations: Conversation[]
   messages: Message[]
-  personas: Persona[]
+  characters: Character[]
   prompts: Prompt[]
   /** v4. Absent in older backups, which is why every read of it is `?? []`. */
   memories: Memory[]
+  /** v5. Who the user is. Absent in v4 and earlier. */
+  profiles: Profile[]
 }
 
 export function makeBackup(
   conversations: Conversation[],
   messages: Message[],
-  personas: Persona[] = [],
+  characters: Character[] = [],
   prompts: Prompt[] = [],
   memories: Memory[] = [],
+  profiles: Profile[] = [],
 ): Backup {
   return {
     format: 'hearth-backup',
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     conversations,
     messages,
-    personas,
+    characters,
     prompts,
     memories,
+    profiles,
   }
 }
 
@@ -254,15 +272,16 @@ export async function exportAll(): Promise<Backup> {
       req.onerror = () => reject(req.error)
     })
 
-  const [conversations, messages, personas, prompts, memories] = await Promise.all([
+  const [conversations, messages, characters, prompts, memories, profiles] = await Promise.all([
     read<Conversation>('conversations'),
     read<Message>('messages'),
-    read<Persona>('personas'),
+    read<Character>('personas'),
     read<Prompt>('prompts'),
     read<Memory>('memories'),
+    read<Profile>('profiles'),
   ])
 
-  return makeBackup(conversations, messages, personas, prompts, memories)
+  return makeBackup(conversations, messages, characters, prompts, memories, profiles)
 }
 
 // Merge, never replace: restoring into an empty database brings everything
@@ -274,32 +293,36 @@ export async function importAll(
 ): Promise<{
   conversations: number
   messages: number
-  personas: number
+  characters: number
   prompts: number
   memories: number
+  profiles: number
 }> {
   const conversations = only ? backup.conversations.filter((c) => only.includes(c.id)) : backup.conversations
   const ids = new Set(conversations.map((c) => c.id))
   const messages = backup.messages.filter((m) => ids.has(m.conversationId))
-  const personas = backup.personas ?? []
+  const characters = backup.characters ?? []
   const prompts = backup.prompts ?? []
-  // Global and persona memories are not tied to a conversation, so a partial
+  // Global and character memories are not tied to a conversation, so a partial
   // restore keeps them. Conversation-scoped ones follow their conversation.
   const memories = (backup.memories ?? []).filter(
     (m) => m.scope !== 'conversation' || !m.ownerId || ids.has(m.ownerId),
   )
+  // Profiles are about the person, so a partial restore keeps all of them.
+  const profiles = backup.profiles ?? []
 
   const db = await open()
   await new Promise<void>((resolve, reject) => {
     const t = db.transaction(
-      ['conversations', 'messages', 'personas', 'prompts', 'memories'],
+      ['conversations', 'messages', 'personas', 'prompts', 'memories', 'profiles'],
       'readwrite',
     )
     for (const c of conversations) t.objectStore('conversations').put(c)
     for (const m of messages) t.objectStore('messages').put(m)
-    for (const p of personas) t.objectStore('personas').put(p)
+    for (const p of characters) t.objectStore('personas').put(p)
     for (const p of prompts) t.objectStore('prompts').put(p)
     for (const m of memories) t.objectStore('memories').put(m)
+    for (const p of profiles) t.objectStore('profiles').put(p)
     t.oncomplete = () => resolve()
     t.onerror = () => reject(t.error)
   })
@@ -307,9 +330,10 @@ export async function importAll(
   return {
     conversations: conversations.length,
     messages: messages.length,
-    personas: personas.length,
+    characters: characters.length,
     prompts: prompts.length,
     memories: memories.length,
+    profiles: profiles.length,
   }
 }
 
@@ -359,16 +383,16 @@ export async function countMessages(): Promise<number> {
   })
 }
 
-export async function listPersonas(): Promise<Persona[]> {
-  const all = await tx<Persona[]>('personas', 'readonly', (s) => s.getAll())
+export async function listCharacters(): Promise<Character[]> {
+  const all = await tx<Character[]>('personas', 'readonly', (s) => s.getAll())
   return all.sort((a, b) => a.createdAt - b.createdAt)
 }
 
-export function putPersona(p: Persona): Promise<IDBValidKey> {
+export function putCharacter(p: Character): Promise<IDBValidKey> {
   return tx('personas', 'readwrite', (s) => s.put(p))
 }
 
-export async function deletePersona(id: string): Promise<void> {
+export async function deleteCharacter(id: string): Promise<void> {
   await tx('personas', 'readwrite', (s) => s.delete(id))
 }
 
@@ -394,15 +418,43 @@ export async function deletePrompt(id: string): Promise<void> {
   await tx('prompts', 'readwrite', (s) => s.delete(id))
 }
 
+// ---- profiles ------------------------------------------------------------
+
+/**
+ * Who the user is. A profile is how you introduce yourself in a conversation,
+ * not a different person: memories stay global unless explicitly scoped.
+ */
+export type Profile = {
+  id: string
+  name: string
+  /** A line or two about you, prepended while this profile is active. */
+  description?: string
+  avatar?: string
+  createdAt: number
+}
+
+export async function listProfiles(): Promise<Profile[]> {
+  const all = await tx<Profile[]>('profiles', 'readonly', (s) => s.getAll())
+  return all.sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export function putProfile(p: Profile): Promise<IDBValidKey> {
+  return tx('profiles', 'readwrite', (s) => s.put(p))
+}
+
+export function deleteProfile(id: string): Promise<undefined> {
+  return tx('profiles', 'readwrite', (s) => s.delete(id))
+}
+
 // ---- memories ------------------------------------------------------------
 
-export type MemoryScope = 'global' | 'conversation' | 'persona'
+export type MemoryScope = 'global' | 'conversation' | 'character'
 
 export type Memory = {
   id: string
   text: string
   scope: MemoryScope
-  /** The conversation or persona this belongs to, when the scope needs one. */
+  /** The conversation or character this belongs to, when the scope needs one. */
   ownerId?: string
   createdAt: number
   updatedAt: number

@@ -34,12 +34,12 @@ export default function PromptsDialog({ onClose, prompts, onSave, onRemove, onUs
         editing a prompt later never rewrites an existing chat.
       </p>
 
-      <ul className="persona-list">
+      <ul className="character-list">
         {prompts.length === 0 && <li className="hint">Nothing saved yet.</li>}
         {prompts.map((p) => (
           <li key={p.id}>
             <button
-              className="persona-pick"
+              className="character-pick"
               onClick={() => {
                 if (!canUse) return
                 onUse(p.text)
@@ -47,10 +47,10 @@ export default function PromptsDialog({ onClose, prompts, onSave, onRemove, onUs
               }}
               title={canUse ? 'Use in this conversation' : 'Open a conversation first'}
             >
-              <span className="persona-name">{p.name}</span>
-              <span className="persona-note">{p.text.slice(0, 90)}</span>
+              <span className="character-name">{p.name}</span>
+              <span className="character-note">{p.text.slice(0, 90)}</span>
             </button>
-            <div className="persona-actions">
+            <div className="character-actions">
               <button
                 className="link"
                 onClick={() =>
@@ -66,7 +66,7 @@ export default function PromptsDialog({ onClose, prompts, onSave, onRemove, onUs
       </ul>
 
       {draft ? (
-        <div className="persona-form">
+        <div className="character-form">
           <label className="field">
             <span>Name</span>
             <input

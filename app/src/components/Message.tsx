@@ -9,7 +9,7 @@ type Props = {
   isLast: boolean
   isLastUser: boolean
   showReasoning: boolean
-  resolveIdentity: (personaId?: string | null) => { name: string; avatar?: string }
+  resolveIdentity: (characterId?: string | null) => { name: string; avatar?: string }
   user: { name: string; avatar?: string }
   onRegenerate: () => void
   onEdit: (text: string) => void
@@ -46,8 +46,8 @@ function MessageView({
   return (
     <article className={`msg ${message.role}`}>
       <Avatar
-        name={isUser ? user.name : resolveIdentity(message.personaId).name}
-        src={isUser ? user.avatar : resolveIdentity(message.personaId).avatar}
+        name={isUser ? user.name : resolveIdentity(message.characterId).name}
+        src={isUser ? user.avatar : resolveIdentity(message.characterId).avatar}
       />
 
       <div className="msg-main">

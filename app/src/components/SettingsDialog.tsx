@@ -18,8 +18,6 @@ type Props = {
   onTheme: (id: string) => void
   showReasoning: boolean
   onShowReasoning: (value: boolean) => void
-  userName: string
-  onUserName: (value: string) => void
   maxTokens: number
   onMaxTokens: (value: number) => void
   modelCtx?: number
@@ -48,8 +46,6 @@ export default function SettingsDialog({
   onTheme,
   showReasoning,
   onShowReasoning,
-  userName,
-  onUserName,
   maxTokens,
   onMaxTokens,
   modelCtx,
@@ -98,15 +94,6 @@ export default function SettingsDialog({
             ))}
           </div>
         )}
-
-        <label className="field">
-          <span>Your name</span>
-          <input
-            value={userName}
-            onChange={(e) => onUserName(e.target.value)}
-            placeholder="You"
-          />
-        </label>
 
         <label className="field">
           <span>Reply budget — {formatTokens(maxTokens)}</span>

@@ -1,4 +1,4 @@
-import { makeBackup, type Backup, type Conversation, type Message, type Persona } from './db'
+import { makeBackup, type Backup, type Conversation, type Message, type Character } from './db'
 
 export function toMarkdown(conv: Conversation, messages: Message[]): string {
   const out: string[] = [
@@ -27,8 +27,8 @@ export function toMarkdown(conv: Conversation, messages: Message[]): string {
 
 // Same envelope as a full backup, with one conversation in it. That is what
 // makes a single chat restorable through the same import path.
-export function toJson(conv: Conversation, messages: Message[], personas: Persona[] = []): string {
-  return JSON.stringify(makeBackup([conv], messages, personas), null, 2)
+export function toJson(conv: Conversation, messages: Message[], characters: Character[] = []): string {
+  return JSON.stringify(makeBackup([conv], messages, characters), null, 2)
 }
 
 export function slug(title: string): string {
@@ -52,12 +52,12 @@ export function parseBackup(text: string): Backup {
   }
 
   if (data?.format !== 'hearth-backup') throw new Error('that is not a Hearth backup file')
-  // v1 predates personas, v2 predates prompts. Accept older files and treat
+  // v1 predates characters, v2 predates prompts. Accept older files and treat
   // the missing arrays as empty rather than refusing a valid backup.
-  if (![1, 2, 3, 4].includes(data.version)) {
+  if (![1, 2, 3, 4, 5].includes(data.version)) {
     throw new Error(`unsupported backup version: ${data.version}`)
   }
-  if (!Array.isArray(data.personas)) data.personas = []
+  if (!Array.isArray(data.characters)) data.characters = []
   if (!Array.isArray(data.prompts)) data.prompts = []
   if (!Array.isArray(data.conversations) || !Array.isArray(data.messages)) {
     throw new Error('backup is missing conversations or messages')

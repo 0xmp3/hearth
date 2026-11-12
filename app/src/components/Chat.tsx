@@ -6,7 +6,7 @@ type Props = {
   messages: Msg[]
   streaming: boolean
   showReasoning: boolean
-  resolveIdentity: (personaId?: string | null) => { name: string; avatar?: string }
+  resolveIdentity: (characterId?: string | null) => { name: string; avatar?: string }
   user: { name: string; avatar?: string }
   onRegenerate: () => void
   onEdit: (text: string) => void
