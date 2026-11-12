@@ -61,13 +61,12 @@ export default function App() {
   const net = useNetwork()
   // agentTurn, not chatTurn: it runs tools and falls back to a single call when
   // there are none. Passing chatTurn here silently disabled the tool loop.
-  const h = useHearth(
-    agentTurn,
-    (characterId) => characters.resolve(characterId),
-    prefs.maxTokens,
-    (profileId) => profiles.resolve(profileId),
-    net.enabled,
-  )
+  const h = useHearth(agentTurn, (characterId) => characters.resolve(characterId), {
+    maxTokens: prefs.maxTokens,
+    resolveProfile: (profileId) => profiles.resolve(profileId),
+    network: net.enabled,
+    search: net.search.provider !== 'off',
+  })
   const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)
@@ -430,6 +429,9 @@ export default function App() {
           onLayout={(value) => updatePrefs({ layout: value })}
           network={{ enabled: net.enabled, available: net.available, busy: net.busy, error: net.error }}
           onNetwork={(value) => void net.toggle(value)}
+          search={net.search}
+          onSearch={net.saveSearch}
+          onTestSearch={net.testSearch}
           onServerChanged={() => void h.reloadModels()}
         />
       )}

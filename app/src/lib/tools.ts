@@ -75,9 +75,34 @@ const WEB_READ: ToolDef = {
   },
 }
 
-/** The tools on offer this turn. Web tools only while egress is switched on. */
-export function toolsFor(network: boolean): ToolDef[] {
-  return network ? [...TOOLS, WEB_READ] : [...TOOLS]
+const WEB_SEARCH: ToolDef = {
+  name: 'web_search',
+  description:
+    'Search the web for pages matching a query. Use it when you need a source you do not ' +
+    'have a URL for: current information, a specific library or error message, or finding ' +
+    "the right page to read. Returns titles, URLs and snippets — it does not read the pages. " +
+    'Follow up with web_read on the most promising URL.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search terms, as you would type them into a search box.' },
+      count: { type: 'integer', description: 'How many results to return. Default 6, maximum 10.' },
+    },
+    required: ['query'],
+    additionalProperties: false,
+  },
+}
+
+/**
+ * The tools on offer this turn.
+ *
+ * Egress off means no web tool at all; egress on with no search provider means
+ * web_read alone, because a declared search tool that can only fail is worse
+ * than one the model never saw.
+ */
+export function toolsFor(web: { network: boolean; search: boolean }): ToolDef[] {
+  if (!web.network) return [...TOOLS]
+  return web.search ? [...TOOLS, WEB_READ, WEB_SEARCH] : [...TOOLS, WEB_READ]
 }
 
 const REMEMBER_GUIDANCE = `You have a tool called remember. Call it whenever the user tells you something durable about themselves — a preference, an ongoing project, hardware or software they use, a constraint, or how they want you to reply. Do not call it for greetings, one-off questions, or anything about yourself. Calling it is silent: the user sees a small note, so do not announce that you are saving something.`
@@ -91,13 +116,22 @@ const WEB_GUIDANCE = `You also have web_read. Call it when a question needs a pa
  * model reads the schema and ignores it. And a tool that does not exist must
  * not be described, or the model will claim it can browse when it cannot.
  */
-export function toolGuidance(network: boolean): string {
-  return network ? `${REMEMBER_GUIDANCE}
+const SEARCH_GUIDANCE = `web_search finds pages; web_read reads one. Search first when you need a source you have no URL for, then read the result you trust — do not answer from snippets alone if the answer depends on detail. Never claim to have searched unless you called the tool.`
 
-${WEB_GUIDANCE}` : REMEMBER_GUIDANCE
+export function toolGuidance(web: { network: boolean; search: boolean }): string {
+  if (!web.network) return REMEMBER_GUIDANCE
+  return web.search
+    ? `${REMEMBER_GUIDANCE}
+
+${WEB_GUIDANCE}
+
+${SEARCH_GUIDANCE}`
+    : `${REMEMBER_GUIDANCE}
+
+${WEB_GUIDANCE}`
 }
 
-const KNOWN = new Set([...TOOLS, WEB_READ].map((t) => t.name))
+const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH].map((t) => t.name))
 
 function sameText(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
@@ -111,7 +145,7 @@ export async function runTool(
   name: string,
   rawArgs: unknown,
   conversationId: string,
-  opts: { network: boolean } = { network: false },
+  opts: { network: boolean; search?: boolean } = { network: false },
 ): Promise<ToolOutcome> {
   if (!KNOWN.has(name)) {
     return {
@@ -123,6 +157,7 @@ export async function runTool(
   const args = (rawArgs ?? {}) as Record<string, unknown>
 
   if (name === 'web_read') return readPage(args, opts.network)
+  if (name === 'web_search') return searchWeb(args, opts)
 
   const text = typeof args.text === 'string' ? args.text.trim() : ''
   const scope = args.scope === 'conversation' ? 'conversation' : 'global'
@@ -158,6 +193,52 @@ export async function runTool(
   return {
     text: `Saved: ${text}`,
     record: { name, ok: true, summary: text },
+  }
+}
+
+/**
+ * Search, then hand the model a numbered list it can act on.
+ *
+ * Snippets are offered as leads, not as answers: the guidance tells the model to
+ * read a result before relying on it, and the tool says plainly that nothing was
+ * read yet.
+ */
+async function searchWeb(args: Record<string, unknown>, opts: { network: boolean; search?: boolean }): Promise<ToolOutcome> {
+  const fail = (message: string): ToolOutcome => ({
+    text: `${message} No results.`,
+    record: { name: 'web_search', ok: false, summary: message },
+  })
+
+  if (!opts.network) return fail('Network access is off, so searching is unavailable.')
+  if (!opts.search) return fail('No search provider is configured in Settings.')
+
+  const query = typeof args.query === 'string' ? args.query.trim() : ''
+  if (!query) return fail('No query was given.')
+  const count = typeof args.count === 'number' ? args.count : undefined
+
+  let out
+  try {
+    out = await manager.search(query, count)
+  } catch (err) {
+    return fail((err as Error).message)
+  }
+
+  if (!out.results.length) {
+    return {
+      text: `No results for "${query}".`,
+      record: { name: 'web_search', ok: true, summary: `no results for "${query}"` },
+    }
+  }
+
+  const lines = out.results
+    .map((r, i) => [i + 1 + '. ' + r.title, '   ' + r.url, '   ' + r.snippet].join('\n'))
+    .join('\n\n')
+  const text =
+    `Results for "${query}" (${out.provider}). These are snippets, not the pages — ` +
+    `use web_read on a URL before relying on its details.\n\n${lines}`
+  return {
+    text,
+    record: { name: 'web_search', ok: true, summary: `"${query}" · ${out.results.length} results` },
   }
 }
 

@@ -27,6 +27,8 @@ export type TurnContext = {
   runTool?: (name: string, args: unknown) => Promise<{ text: string; record: ToolRecord }>
   /** Egress switched on: adds the web tools to the request. */
   network?: boolean
+  /** A search provider exists: adds web_search as well as web_read. */
+  search?: boolean
   /** Reports a tool that ran, for the message body. */
   onTool?: (record: ToolRecord) => void
 }
@@ -57,7 +59,9 @@ export const agentTurn: TurnDriver = async (ctx) => {
       messages,
       maxTokens: ctx.maxTokens,
       signal: ctx.signal,
-      tools: ctx.runTool ? toolsFor(ctx.network === true) : undefined,
+      tools: ctx.runTool
+        ? toolsFor({ network: ctx.network === true, search: ctx.search === true })
+        : undefined,
       onDelta: (text) => ctx.append('content', text),
       onReasoning: (text) => ctx.append('reasoning', text),
       onStats: ctx.onStats,

@@ -25,14 +25,24 @@ import {
   shouldCompact,
 } from '../lib/compaction'
 
+export type HearthOptions = {
+  /** Reply budget, in tokens. */
+  maxTokens?: number
+  resolveProfile?: (profileId: string | null | undefined) => db.Profile | null
+  /** Egress is on: the web tools exist and the guidance mentions them. */
+  network?: boolean
+  /** A search provider is configured: web_search joins web_read. */
+  search?: boolean
+}
+
 export function useHearth(
   turn: TurnDriver = agentTurn,
   resolveCharacter?: (characterId: string | null | undefined) => db.Character | null,
-  maxTokens = 2048,
-  resolveProfile?: (profileId: string | null | undefined) => db.Profile | null,
-  /** Egress is on: the web tools are offered and the guidance mentions them. */
-  network = false,
+  options: HearthOptions = {},
 ) {
+  const { maxTokens = 2048, resolveProfile, network = false, search = false } = options
+  // Both gates decide what the request declares, so they travel together.
+  const web = { network, search }
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<db.Message[]>([])
@@ -140,7 +150,7 @@ export function useHearth(
       character,
       buildSummaryBlock(summary),
       memory,
-      toolGuidance(network),
+      toolGuidance(web),
       conv.systemPrompt?.trim() || SYSTEM_PROMPT,
     ]
       .filter(Boolean)
@@ -224,10 +234,11 @@ export function useHearth(
         },
         // Tools run in the app, not the model: this is the only place a reply
         // can change anything outside itself.
-        runTool: (name, args) => executeTool(name, args, conv.id, { network }),
+        runTool: (name, args) => executeTool(name, args, conv.id, web),
         // The driver builds the tool list from this, so egress off means the
         // request never even declares web_read.
         network,
+        search,
         onTool: (record) => {
           const draft = draftRef.current
           if (!draft) return

@@ -77,6 +77,14 @@ export type Page = {
   truncated: boolean
 }
 
+export type SearchState = {
+  provider: 'off' | 'brave' | 'searxng'
+  hasKey: boolean
+  searxngUrl: string
+}
+
+export type SearchHit = { title: string; url: string; snippet: string }
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
   /** Egress is the manager's decision; the app only asks. */
@@ -85,6 +93,14 @@ export const manager = {
     call<{ enabled: boolean }>('/api/network', { method: 'POST', body: JSON.stringify({ enabled }) }),
   readPage: (url: string, maxChars?: number) =>
     call<Page>('/api/fetch', { method: 'POST', body: JSON.stringify({ url, maxChars }) }),
+  searchState: () => call<SearchState>('/api/search'),
+  saveSearch: (patch: { provider?: string; braveKey?: string; searxngUrl?: string }) =>
+    call<SearchState>('/api/search', { method: 'POST', body: JSON.stringify(patch) }),
+  search: (q: string, count?: number) =>
+    call<{ query: string; provider: string; results: SearchHit[] }>('/api/search/run', {
+      method: 'POST',
+      body: JSON.stringify({ q, count }),
+    }),
   start: (opts: { ctx: number; modelsDir?: string; ngl?: number }) =>
     call<ManagerStatus>('/api/start', { method: 'POST', body: JSON.stringify(opts) }),
   stop: () => call<ManagerStatus>('/api/stop', { method: 'POST' }),

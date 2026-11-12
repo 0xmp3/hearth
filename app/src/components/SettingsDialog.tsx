@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Dialog from './Dialog'
 import { BUDGET_STOPS, formatTokens, nearestStopIndex } from '../lib/budget'
 import BackendPanel from './BackendPanel'
@@ -31,6 +32,9 @@ type Props = {
   onServerChanged: () => void
   network: { enabled: boolean; available: boolean | null; busy: boolean; error: string | null }
   onNetwork: (enabled: boolean) => void
+  search: { provider: 'off' | 'brave' | 'searxng'; hasKey: boolean; searxngUrl: string }
+  onSearch: (patch: { provider?: string; braveKey?: string; searxngUrl?: string }) => Promise<unknown>
+  onTestSearch: (query: string) => Promise<{ title: string; url: string }[] | null>
 }
 
 export default function SettingsDialog({
@@ -61,7 +65,26 @@ export default function SettingsDialog({
   onServerChanged,
   network,
   onNetwork,
+  search,
+  onSearch,
+  onTestSearch,
 }: Props) {
+  // The key is write-only: the manager never sends it back, so the field starts
+  // empty and only ever carries a new value.
+  const [keyDraft, setKeyDraft] = useState('')
+  const [testQuery, setTestQuery] = useState('')
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  async function test() {
+    const q = testQuery.trim()
+    if (!q) return
+    setTesting(true)
+    setTestResult(null)
+    const hits = await onTestSearch(q)
+    setTesting(false)
+    setTestResult(hits ? `${hits.length} result${hits.length === 1 ? '' : 's'}${hits[0] ? ` — first: ${hits[0].title}` : ''}` : 'that did not work — the reason is above')
+  }
   return (
     <Dialog
       title="Settings"
@@ -227,6 +250,94 @@ export default function SettingsDialog({
             </em>
           </span>
         </label>
+        <label className="field">
+          <span>Search provider</span>
+          <select
+            value={search.provider}
+            disabled={network.busy || network.available === false}
+            onChange={(e) => void onSearch({ provider: e.target.value })}
+          >
+            <option value="off">Off — read URLs, no search</option>
+            <option value="brave">Brave Search API</option>
+            <option value="searxng">SearXNG instance</option>
+          </select>
+          <em className="hint">
+            search needs a provider; reading a URL does not. Nothing here is used until
+            network access is on.
+          </em>
+        </label>
+
+        {search.provider === 'brave' && (
+          <label className="field">
+            <span>Brave API key {search.hasKey ? '— saved' : ''}</span>
+            <div className="row">
+              <input
+                type="password"
+                value={keyDraft}
+                placeholder={search.hasKey ? '••••••••  (replace)' : 'paste the key from api.search.brave.com'}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <button
+                className="ghost"
+                disabled={!keyDraft.trim()}
+                onClick={() => {
+                  void onSearch({ braveKey: keyDraft.trim() }).then(() => setKeyDraft(''))
+                }}
+              >
+                Save key
+              </button>
+            </div>
+            <em className="hint">
+              stored by the manager in <code>data/config.json</code> — never in the browser,
+              never in a backup, and never sent back to this page.
+            </em>
+          </label>
+        )}
+
+        {search.provider === 'searxng' && (
+          <label className="field">
+            <span>SearXNG address</span>
+            <div className="row">
+              <input
+                type="text"
+                defaultValue={search.searxngUrl}
+                placeholder="http://127.0.0.1:8888"
+                spellCheck={false}
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== search.searxngUrl) void onSearch({ searxngUrl: e.target.value.trim() })
+                }}
+              />
+            </div>
+            <em className="hint">
+              your own instance, with <code>json</code> enabled under <code>search.formats</code> in
+              its settings.yml.
+            </em>
+          </label>
+        )}
+
+        {search.provider !== 'off' && (
+          <label className="field">
+            <span>Try it</span>
+            <div className="row">
+              <input
+                type="text"
+                value={testQuery}
+                placeholder="a query"
+                onChange={(e) => setTestQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void test()
+                }}
+              />
+              <button className="ghost" disabled={testing || !testQuery.trim()} onClick={() => void test()}>
+                {testing ? 'Searching…' : 'Search'}
+              </button>
+            </div>
+            {testResult && <em className="hint">{testResult}</em>}
+          </label>
+        )}
+
         {network.error && <div className="error">{network.error}</div>}
       </section>
 

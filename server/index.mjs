@@ -24,6 +24,7 @@ import { detect } from './engine/detect.mjs'
 import { pickSource } from './engine/catalog.mjs'
 import { install, progress, isInstalled } from './engine/install.mjs'
 import { readUrl } from './net/fetch.mjs'
+import { webSearch } from './net/search.mjs'
 import {
   BIN,
   engineDir,
@@ -404,6 +405,75 @@ const server = createServer((req, res) => {
         const cfg = writeConfig(DATA, { network: body.enabled })
         push(`[net] network access ${body.enabled ? 'on' : 'off'}`)
         json(res, 200, { enabled: cfg.network === true })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  // Search settings. The key is written once and never read back out: the app
+  // is told whether one exists, not what it is, so a screenshot of Settings (or
+  // a stray backup) cannot carry it away.
+  const searchState = () => {
+    const cfg = readConfig(DATA)
+    const s = cfg.search ?? {}
+    const key = process.env.HEARTH_BRAVE_KEY || s.braveKey || ''
+    return {
+      provider: s.provider ?? 'off',
+      hasKey: Boolean(key),
+      searxngUrl: s.searxngUrl ?? '',
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/search') {
+    json(res, 200, searchState())
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/search') {
+    readBody(req, 1e4)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const cfg = readConfig(DATA)
+        const current = cfg.search ?? {}
+        const next = { ...current }
+        if (body.provider !== undefined) {
+          if (!['off', 'brave', 'searxng'].includes(body.provider)) throw new Error('unknown provider')
+          next.provider = body.provider
+        }
+        // An empty string clears the key; omitting the field keeps it, so the
+        // app never has to hold the secret to re-save the rest of the form.
+        if (typeof body.braveKey === 'string') next.braveKey = body.braveKey.trim()
+        if (typeof body.searxngUrl === 'string') next.searxngUrl = body.searxngUrl.trim()
+        writeConfig(DATA, { search: next })
+        push(`[net] search provider: ${next.provider ?? 'off'}`)
+        json(res, 200, searchState())
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/search/run') {
+    if (readConfig(DATA).network !== true) {
+      json(res, 403, { error: 'network access is off' })
+      return
+    }
+    readBody(req, 1e4)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const cfg = readConfig(DATA)
+        const settings = {
+          ...(cfg.search ?? {}),
+          braveKey: process.env.HEARTH_BRAVE_KEY || cfg.search?.braveKey || '',
+        }
+        const started = Date.now()
+        try {
+          const out = await webSearch(body.q, settings, body.count)
+          push(`[net] search "${String(body.q).slice(0, 120)}" via ${out.provider} → ${out.results.length} results, ${Date.now() - started} ms`)
+          json(res, 200, out)
+        } catch (err) {
+          push(`[net] search failed — ${err.message}`)
+          json(res, 400, { error: err.message })
+        }
       })
       .catch((err) => json(res, 400, { error: err.message }))
     return
