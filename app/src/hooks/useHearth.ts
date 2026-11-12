@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as db from '../lib/db'
 import { listModels, type ModelInfo } from '../lib/models'
 import { agentTurn, type TurnDriver } from '../lib/turn'
-import { runTool as executeTool, toolGuidance } from '../lib/tools'
+import { NO_TOOLS, runTool as executeTool, toolGuidance, type ToolPolicy } from '../lib/tools'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
 import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
@@ -29,12 +29,12 @@ export type HearthOptions = {
   /** Reply budget, in tokens. */
   maxTokens?: number
   resolveProfile?: (profileId: string | null | undefined) => db.Profile | null
-  /** Egress is on: the web tools exist and the guidance mentions them. */
-  network?: boolean
-  /** A search provider is configured: web_search joins web_read. */
-  search?: boolean
-  /** A workspace folder is open: the file tools join the rest. */
-  workspace?: boolean
+  /**
+   * Which tool families a conversation may use. A function, not a value: the
+   * policy depends on the conversation, and the hook is the only place that
+   * knows which one a turn belongs to.
+   */
+  tools?: (conv: db.Conversation) => ToolPolicy
 }
 
 export function useHearth(
@@ -42,9 +42,8 @@ export function useHearth(
   resolveCharacter?: (characterId: string | null | undefined) => db.Character | null,
   options: HearthOptions = {},
 ) {
-  const { maxTokens = 2048, resolveProfile, network = false, search = false, workspace = false } = options
-  // These decide what the request declares, so they travel together.
-  const web = { network, search, workspace }
+  const { maxTokens = 2048, resolveProfile, tools: policyFor } = options
+  const policyForConv = (conv: db.Conversation): ToolPolicy => policyFor?.(conv) ?? NO_TOOLS
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<db.Message[]>([])
@@ -152,7 +151,7 @@ export function useHearth(
       character,
       buildSummaryBlock(summary),
       memory,
-      toolGuidance(web),
+      toolGuidance(policyForConv(conv)),
       conv.systemPrompt?.trim() || SYSTEM_PROMPT,
     ]
       .filter(Boolean)
@@ -236,12 +235,10 @@ export function useHearth(
         },
         // Tools run in the app, not the model: this is the only place a reply
         // can change anything outside itself.
-        runTool: (name, args) => executeTool(name, args, conv.id, web),
-        // The driver builds the tool list from this, so egress off means the
-        // request never even declares web_read.
-        network,
-        search,
-        workspace,
+        runTool: (name, args) => executeTool(name, args, conv.id, policyForConv(conv)),
+        // The driver builds the tool list from this, so a family that is off
+        // never reaches the request at all.
+        tools: policyForConv(conv),
         onTool: (record) => {
           const draft = draftRef.current
           if (!draft) return
@@ -382,6 +379,12 @@ export function useHearth(
   // conversation out, an id pins it.
   async function setConversationProfile(profileId: string | null | undefined) {
     await patchConversation({ profileId })
+  }
+
+  // The tool profile belongs to the conversation, like the character: switching
+  // it mid-thread only changes what the next reply can reach.
+  async function setConversationTools(tools: db.ToolMode | undefined) {
+    await patchConversation({ tools })
   }
 
   async function setSystemPrompt(text: string) {
@@ -668,6 +671,7 @@ export function useHearth(
     setSystemPrompt,
     setConversationCharacter,
     setConversationProfile,
+    setConversationTools,
     streaming,
     stats,
     error,

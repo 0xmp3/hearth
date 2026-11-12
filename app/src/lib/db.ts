@@ -23,7 +23,19 @@ export type Conversation = {
   profileId?: string | null
   /** Pre-rename field, still read for old records. */
   personaId?: string | null
+  /**
+   * What this conversation may use. Absent means "everything the app allows" —
+   * which is the point: a conversation can narrow its tools, never widen them.
+   */
+  tools?: ToolMode
 }
+
+/**
+ * A conversation's tool profile. The names are the modes people actually think
+ * in, not the flags underneath: coding wants files, roleplay wants neither, and
+ * agent work wants everything.
+ */
+export type ToolMode = 'default' | 'files' | 'web' | 'none'
 
 import type { Attachment } from './attachments'
 

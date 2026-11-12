@@ -6,7 +6,14 @@
 // one it is running.
 
 import { streamChat, type ChatMessage, type Stats } from './stream'
-import { toolsFor, type ToolRecord } from './tools'
+import { NO_TOOLS, toolsFor, type ToolPolicy, type ToolRecord } from './tools'
+
+/** An empty list is not a list: `tools: []` is rejected by some servers, and
+ *  "no tools" is properly expressed by leaving the field out. */
+function toolList(policy: ToolPolicy | undefined) {
+  const list = toolsFor(policy ?? NO_TOOLS)
+  return list.length ? list : undefined
+}
 import { BASE_URL } from './config'
 
 /**
@@ -27,12 +34,8 @@ export type TurnContext = {
   onStats: (stats: Stats) => void
   /** Executes a tool call. Absent when tools are switched off. */
   runTool?: (name: string, args: unknown) => Promise<{ text: string; record: ToolRecord }>
-  /** Egress switched on: adds the web tools to the request. */
-  network?: boolean
-  /** A search provider exists: adds web_search as well as web_read. */
-  search?: boolean
-  /** A workspace folder is open: adds the file tools. */
-  workspace?: boolean
+  /** Which tool families this turn may use. Absent means none. */
+  tools?: ToolPolicy
   /** Reports a tool that ran, for the message body. */
   onTool?: (record: ToolRecord) => void
 }
@@ -63,13 +66,7 @@ export const agentTurn: TurnDriver = async (ctx) => {
       messages,
       maxTokens: ctx.maxTokens,
       signal: ctx.signal,
-      tools: ctx.runTool
-        ? toolsFor({
-            network: ctx.network === true,
-            search: ctx.search === true,
-            workspace: ctx.workspace === true,
-          })
-        : undefined,
+      tools: ctx.runTool ? toolList(ctx.tools) : undefined,
       onDelta: (text) => ctx.append('content', text),
       onReasoning: (text) => ctx.append('reasoning', text),
       onStats: ctx.onStats,

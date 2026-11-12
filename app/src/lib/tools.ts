@@ -101,12 +101,27 @@ const WEB_SEARCH: ToolDef = {
  * web_read alone, because a declared search tool that can only fail is worse
  * than one the model never saw.
  */
-export function toolsFor(web: { network: boolean; search: boolean; workspace?: boolean }): ToolDef[] {
-  const tools = [...TOOLS]
-  if (web.network) tools.push(WEB_READ)
-  if (web.network && web.search) tools.push(WEB_SEARCH)
+/** Which families of tool a turn may use. Computed once, in the app. */
+export type ToolPolicy = {
+  /** web_read — egress, manager-gated */
+  network: boolean
+  /** web_search — egress plus a working provider */
+  search: boolean
+  /** list_files / search_files / read_file — local, manager-gated */
+  files: boolean
+  /** remember — local, no manager involvement */
+  memory: boolean
+}
+
+export const NO_TOOLS: ToolPolicy = { network: false, search: false, files: false, memory: false }
+
+export function toolsFor(policy: ToolPolicy): ToolDef[] {
+  const tools: ToolDef[] = []
+  if (policy.memory) tools.push(...TOOLS)
+  if (policy.network) tools.push(WEB_READ)
+  if (policy.network && policy.search) tools.push(WEB_SEARCH)
   // The workspace is local: it does not care whether egress is on.
-  if (web.workspace) tools.push(...WORKSPACE_TOOLS)
+  if (policy.files) tools.push(...WORKSPACE_TOOLS)
   return tools
 }
 
@@ -125,13 +140,16 @@ const SEARCH_GUIDANCE = `web_search finds pages; web_read reads one. Search firs
 
 Be decisive with these. One search per question, then at most two pages, is enough for almost anything. If those do not contain the answer, say what you found and what you could not confirm — do not run more searches hoping for a better page. Never claim to have searched unless you called the tool, and never keep a citation you did not read.`
 
-export function toolGuidance(web: { network: boolean; search: boolean; workspace?: boolean }): string {
-  const parts = [REMEMBER_GUIDANCE]
-  if (web.network) {
+export function toolGuidance(policy: ToolPolicy): string {
+  // The guidance must describe exactly the tools in the request: a paragraph
+  // about a tool the model was not given is how it starts promising browsing.
+  const parts: string[] = []
+  if (policy.memory) parts.push(REMEMBER_GUIDANCE)
+  if (policy.network) {
     parts.push(WEB_GUIDANCE)
-    if (web.search) parts.push(SEARCH_GUIDANCE)
+    if (policy.search) parts.push(SEARCH_GUIDANCE)
   }
-  if (web.workspace) parts.push(WORKSPACE_GUIDANCE)
+  if (policy.files) parts.push(WORKSPACE_GUIDANCE)
   return parts.join('\n\n')
 }
 
@@ -149,7 +167,7 @@ export async function runTool(
   name: string,
   rawArgs: unknown,
   conversationId: string,
-  opts: { network: boolean; search?: boolean; workspace?: boolean } = { network: false },
+  opts: ToolPolicy = NO_TOOLS,
 ): Promise<ToolOutcome> {
   if (!KNOWN.has(name)) {
     return {
@@ -163,7 +181,13 @@ export async function runTool(
   if (name === 'web_read') return readPage(args, opts.network)
   if (name === 'web_search') return searchWeb(args, opts)
   if (name === 'list_files' || name === 'search_files' || name === 'read_file') {
-    return runWorkspaceTool(name, args, opts.workspace === true)
+    return runWorkspaceTool(name, args, opts.files)
+  }
+  if (name === 'remember' && !opts.memory) {
+    return {
+      text: 'Tools are off in this conversation, so nothing was saved. Nothing else needs doing.',
+      record: { name, ok: false, summary: 'tools off in this conversation' },
+    }
   }
 
   const text = typeof args.text === 'string' ? args.text.trim() : ''
@@ -210,7 +234,7 @@ export async function runTool(
  * read a result before relying on it, and the tool says plainly that nothing was
  * read yet.
  */
-async function searchWeb(args: Record<string, unknown>, opts: { network: boolean; search?: boolean }): Promise<ToolOutcome> {
+async function searchWeb(args: Record<string, unknown>, opts: ToolPolicy): Promise<ToolOutcome> {
   const fail = (message: string): ToolOutcome => ({
     text: `${message} No results.`,
     record: { name: 'web_search', ok: false, summary: message },

@@ -10,6 +10,7 @@ import ExportDialog from './components/ExportDialog'
 import RestoreDialog from './components/RestoreDialog'
 import StatsDialog from './components/StatsDialog'
 import MemoryDialog from './components/MemoryDialog'
+import ToolsDialog from './components/ToolsDialog'
 import PromptsDialog from './components/PromptsDialog'
 import ModelsDialog from './components/ModelsDialog'
 import { useHearth } from './hooks/useHearth'
@@ -22,6 +23,7 @@ import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
 import { agentTurn } from './lib/turn'
+import type { ToolPolicy } from './lib/tools'
 import { countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
@@ -48,6 +50,7 @@ type DialogName =
   | 'prompts'
   | 'models'
   | 'memory'
+  | 'tools'
 
 export default function App() {
   const characters = useCharacters()
@@ -63,15 +66,27 @@ export default function App() {
   // copies of the answers.
   const net = useNetwork()
   const ws = useWorkspace()
+
+  // What a conversation may use: the manager's switches decide what is
+  // possible, the conversation's mode decides what is offered.
+  const toolPolicyFor = (conv: { tools?: string }): ToolPolicy => {
+    const mode = conv.tools ?? 'default'
+    const web = mode === 'default' || mode === 'web'
+    return {
+      network: net.enabled && web,
+      search: net.searchReady && web,
+      files: ws.ready && (mode === 'default' || mode === 'files'),
+      memory: mode !== 'none',
+    }
+  }
   // agentTurn, not chatTurn: it runs tools and falls back to a single call when
   // there are none. Passing chatTurn here silently disabled the tool loop.
   const h = useHearth(agentTurn, (characterId) => characters.resolve(characterId), {
     maxTokens: prefs.maxTokens,
     resolveProfile: (profileId) => profiles.resolve(profileId),
-    network: net.enabled,
-    search: net.searchReady,
-    workspace: ws.ready,
+    tools: toolPolicyFor,
   })
+  const toolMode = h.activeConversation?.tools ?? 'default'
   const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)
@@ -204,6 +219,7 @@ export default function App() {
     { id: 'models', label: 'Models', hint: 'browse a folder', run: () => setDialog('models') },
     { id: 'stats', label: 'Stats', hint: 'speed history', run: () => setDialog('stats') },
     { id: 'memory', label: 'Memory', hint: 'what it remembers', run: () => setDialog('memory') },
+    { id: 'tools', label: 'Tools in this conversation', hint: 'what this chat may use', run: () => setDialog('tools') },
     { id: 'settings', label: 'Settings', run: () => setDialog('settings') },
     { id: 'profile', label: 'Profiles', run: () => setDialog('profile') },
     { id: 'system', label: 'Toggle system prompt', run: () => setShowSystem((v) => !v) },
@@ -318,6 +334,16 @@ export default function App() {
             )}
 
             <div className="topbar-right">
+              {toolMode !== 'default' && (
+                <button
+                  className="ghost tools"
+                  onClick={() => setDialog('tools')}
+                  disabled={!h.activeConversation}
+                  title="What this conversation may use"
+                >
+                  tools: {toolMode}
+                </button>
+              )}
               {net.enabled && (
                 <button
                   className="ghost net"
@@ -499,6 +525,15 @@ export default function App() {
           onCapture={h.captureNow}
           onCondense={h.condenseNow}
           onChanged={h.refreshMemories}
+        />
+      )}
+
+      {dialog === 'tools' && (
+        <ToolsDialog
+          mode={toolMode}
+          onMode={(mode) => void h.setConversationTools(mode === 'default' ? undefined : mode)}
+          available={{ web: net.enabled, search: net.searchReady, files: ws.ready }}
+          onClose={() => setDialog(null)}
         />
       )}
 
