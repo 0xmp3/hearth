@@ -85,6 +85,26 @@ export type SearchState = {
 
 export type SearchHit = { title: string; url: string; snippet: string }
 
+export type SearxngStatus = {
+  installed: boolean
+  running: boolean
+  pid: number | null
+  startedAt: number | null
+  url: string
+  port: number
+  python: { version: string; path: string; bin: string; args: string[] } | null
+  source: { version: string; sha: string; url: string }
+  progress: {
+    phase: 'idle' | 'resolving' | 'downloading' | 'extracting' | 'venv' | 'deps' | 'configuring' | 'done' | 'error'
+    got: number
+    total: number
+    step: string | null
+    error: string | null
+  }
+  log: string[]
+  root: string
+}
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
   /** Egress is the manager's decision; the app only asks. */
@@ -96,6 +116,11 @@ export const manager = {
   searchState: () => call<SearchState>('/api/search'),
   saveSearch: (patch: { provider?: string; braveKey?: string; searxngUrl?: string }) =>
     call<SearchState>('/api/search', { method: 'POST', body: JSON.stringify(patch) }),
+  searxng: () => call<SearxngStatus>('/api/searxng'),
+  installSearxng: () => call<{ started: boolean }>('/api/searxng/install', { method: 'POST' }),
+  startSearxng: () => call<SearxngStatus>('/api/searxng/start', { method: 'POST' }),
+  stopSearxng: () => call<SearxngStatus & { stopped: boolean }>('/api/searxng/stop', { method: 'POST' }),
+  removeSearxng: () => call<SearxngStatus & { removed: boolean }>('/api/searxng/remove', { method: 'POST' }),
   search: (q: string, count?: number) =>
     call<{ query: string; provider: string; results: SearchHit[] }>('/api/search/run', {
       method: 'POST',

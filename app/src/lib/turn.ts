@@ -10,11 +10,13 @@ import { toolsFor, type ToolRecord } from './tools'
 import { BASE_URL } from './config'
 
 /**
- * A confused model will call tools forever. Five rounds is enough for any
- * honest chain (remember → answer) and short enough that a loop is a hiccup
- * rather than a hang.
+ * A confused model will call tools forever. Eight rounds fits the longest honest
+ * chain with search in it (search → read → read → answer) with room for a
+ * correction, and is short enough that a loop is a hiccup rather than a hang.
+ * Five was chosen before search existed, and a real question — "what is the
+ * current stable version of X" — used all five and got cut off mid-answer.
  */
-export const MAX_TOOL_ROUNDS = 5
+export const MAX_TOOL_ROUNDS = 8
 
 export type TurnContext = {
   model: string

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Dialog from './Dialog'
 import { BUDGET_STOPS, formatTokens, nearestStopIndex } from '../lib/budget'
 import BackendPanel from './BackendPanel'
+import SearxngPanel from './SearxngPanel'
 import type { ModelInfo } from '../lib/models'
 
 type Props = {
@@ -297,8 +298,13 @@ export default function SettingsDialog({
         )}
 
         {search.provider === 'searxng' && (
-          <label className="field">
-            <span>SearXNG address</span>
+          <>
+            <label className="field">
+              <span>Install one</span>
+              <SearxngPanel onUrl={(url) => void onSearch({ searxngUrl: url })} />
+            </label>
+            <label className="field">
+              <span>SearXNG address</span>
             <div className="row">
               <input
                 type="text"
@@ -311,10 +317,11 @@ export default function SettingsDialog({
               />
             </div>
             <em className="hint">
-              your own instance, with <code>json</code> enabled under <code>search.formats</code> in
-              its settings.yml.
+              yours, or the one installed above — with <code>json</code> enabled under
+              <code>search.formats</code> in its settings.yml. The installer writes that for you.
             </em>
           </label>
+          </>
         )}
 
         {search.provider !== 'off' && (

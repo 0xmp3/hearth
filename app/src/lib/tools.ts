@@ -116,7 +116,9 @@ const WEB_GUIDANCE = `You also have web_read. Call it when a question needs a pa
  * model reads the schema and ignores it. And a tool that does not exist must
  * not be described, or the model will claim it can browse when it cannot.
  */
-const SEARCH_GUIDANCE = `web_search finds pages; web_read reads one. Search first when you need a source you have no URL for, then read the result you trust — do not answer from snippets alone if the answer depends on detail. Never claim to have searched unless you called the tool.`
+const SEARCH_GUIDANCE = `web_search finds pages; web_read reads one. Search first when you need a source you have no URL for, then read the result you trust — do not answer from snippets alone if the answer depends on detail.
+
+Be decisive with these. One search per question, then at most two pages, is enough for almost anything. If those do not contain the answer, say what you found and what you could not confirm — do not run more searches hoping for a better page. Never claim to have searched unless you called the tool, and never keep a citation you did not read.`
 
 export function toolGuidance(web: { network: boolean; search: boolean }): string {
   if (!web.network) return REMEMBER_GUIDANCE

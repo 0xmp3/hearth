@@ -25,6 +25,7 @@ import { pickSource } from './engine/catalog.mjs'
 import { install, progress, isInstalled } from './engine/install.mjs'
 import { readUrl } from './net/fetch.mjs'
 import { webSearch } from './net/search.mjs'
+import * as searxng from './searxng/install.mjs'
 import {
   BIN,
   engineDir,
@@ -410,12 +411,83 @@ const server = createServer((req, res) => {
     return
   }
 
+  // ---- managed SearXNG ---------------------------------------------------
+  // The address of the managed instance is *computed*, not stored: it exists
+  // exactly while the process runs. Storing it invited a read-modify-write race
+  // — a settings save landing between start() and the write dropped the URL and
+  // took search down with it.
+
+  const effectiveSearch = () => {
+    const cfg = readConfig(DATA)
+    const saved = cfg.search ?? {}
+    const managed = searxng.status(DATA)
+    return {
+      ...saved,
+      searxngUrl: saved.searxngUrl || (managed.running ? managed.url : ''),
+    }
+  }
+
+  // The install that needs no key and no account. It is a Python app, so the
+  // manager builds a venv, installs the pinned requirements, and owns the
+  // process — the same shape as the engine, with a much slower first run.
+
+  if (req.method === 'GET' && url.pathname === '/api/searxng') {
+    // The Python probe is a process spawn, so it is done here rather than in the
+    // sync status() the internals use.
+    searxng
+      .findPython()
+      .then((python) => json(res, 200, { ...searxng.status(DATA), python }))
+      .catch(() => json(res, 200, { ...searxng.status(DATA), python: null }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/searxng/install') {
+    json(res, 202, { started: true })
+    searxng
+      .install(DATA)
+      .then(async () => {
+        // Installing ends with it running: "installed" is not a state a user
+        // asked for, it is a step.
+        await searxng.start(DATA)
+        push('[searxng] install complete and running')
+      })
+      .catch((err) => push(`[searxng] install error: ${err.message}`))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/searxng/start') {
+    searxng
+      .start(DATA)
+      .then((state) => json(res, 200, state))
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/searxng/stop') {
+    const stopped = searxng.stop(DATA)
+    json(res, 200, { stopped, ...searxng.status(DATA) })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/searxng/remove') {
+    searxng
+      .uninstall(DATA)
+      .then(() => {
+        const cfg = readConfig(DATA)
+        const search = { ...(cfg.search ?? {}) }
+        if ((search.searxngUrl ?? '').startsWith('http://127.0.0.1:')) search.searxngUrl = ''
+        writeConfig(DATA, { search })
+        json(res, 200, { removed: true, ...searxng.status(DATA) })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
   // Search settings. The key is written once and never read back out: the app
   // is told whether one exists, not what it is, so a screenshot of Settings (or
   // a stray backup) cannot carry it away.
   const searchState = () => {
-    const cfg = readConfig(DATA)
-    const s = cfg.search ?? {}
+    const s = effectiveSearch()
     const key = process.env.HEARTH_BRAVE_KEY || s.braveKey || ''
     return {
       provider: s.provider ?? 'off',
@@ -460,10 +532,9 @@ const server = createServer((req, res) => {
     readBody(req, 1e4)
       .then(async (buf) => {
         const body = buf.length ? JSON.parse(buf.toString()) : {}
-        const cfg = readConfig(DATA)
         const settings = {
-          ...(cfg.search ?? {}),
-          braveKey: process.env.HEARTH_BRAVE_KEY || cfg.search?.braveKey || '',
+          ...effectiveSearch(),
+          braveKey: process.env.HEARTH_BRAVE_KEY || readConfig(DATA).search?.braveKey || '',
         }
         const started = Date.now()
         try {
@@ -547,12 +618,27 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`  models:  ${models.path ?? '(none — set one in Settings)'}  [${models.source}]`)
   console.log(`  data:    ${DATA}`)
   console.log(`  serving: ${LLAMA_PORT}`)
+
+  // A managed search instance that is installed should be up when the manager
+  // is: the user asked for web search to work, not to press Start on every boot.
+  // Failures are logged and ignored — search degrades to "not running".
+  const cfg = readConfig(DATA)
+  if (cfg.search?.provider === 'searxng' && searxng.status(DATA).installed) {
+    searxng
+      .start(DATA)
+      .then((st) => console.log(`  search:  SearXNG on ${st.url}`))
+      .catch((err) => console.log(`  search:  SearXNG not started (${err.message})`))
+  }
 })
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     stop()
     metrics.stop()
+    searxng.stop(DATA)
     process.exit(0)
   })
 }
+
+// A manager that dies must not leave a Python web server behind.
+process.on('exit', () => searxng.stop(DATA))
