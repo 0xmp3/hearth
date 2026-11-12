@@ -775,6 +775,12 @@ button.ghost.on { color: var(--accent); border-color: var(--accent); }
 
 .topbar-right { display: flex; align-items: center; gap: var(--space-5); }
 
+/* The egress indicator. Off by default, and unmistakable when on. */
+.topbar-right .net {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
 /* ---------- system prompt ---------- */
 
 .system-panel { padding: var(--space-5) 0 0; }

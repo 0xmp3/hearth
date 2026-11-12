@@ -21,6 +21,9 @@ const DEFAULTS = {
   modelsDir: null,
   ctx: 16384,
   ngl: 99,
+  // Egress is off until the user says otherwise, and it is the manager that
+  // enforces it: the app asks, the manager decides.
+  network: false,
 }
 
 export function configPath(dataDir) {

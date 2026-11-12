@@ -68,8 +68,23 @@ export type EngineStatus = {
   installing: boolean
 }
 
+export type Page = {
+  url: string
+  title: string
+  text: string
+  contentType: string
+  bytes: number
+  truncated: boolean
+}
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
+  /** Egress is the manager's decision; the app only asks. */
+  network: () => call<{ enabled: boolean }>('/api/network'),
+  setNetwork: (enabled: boolean) =>
+    call<{ enabled: boolean }>('/api/network', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  readPage: (url: string, maxChars?: number) =>
+    call<Page>('/api/fetch', { method: 'POST', body: JSON.stringify({ url, maxChars }) }),
   start: (opts: { ctx: number; modelsDir?: string; ngl?: number }) =>
     call<ManagerStatus>('/api/start', { method: 'POST', body: JSON.stringify(opts) }),
   stop: () => call<ManagerStatus>('/api/stop', { method: 'POST' }),

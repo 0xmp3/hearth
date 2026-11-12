@@ -23,6 +23,7 @@ import { buildPreset } from './engine/preset.mjs'
 import { detect } from './engine/detect.mjs'
 import { pickSource } from './engine/catalog.mjs'
 import { install, progress, isInstalled } from './engine/install.mjs'
+import { readUrl } from './net/fetch.mjs'
 import {
   BIN,
   engineDir,
@@ -381,6 +382,50 @@ const server = createServer((req, res) => {
           })
 
         json(res, 202, { started: true, source })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  // ---- network ----------------------------------------------------------
+  // Egress lives here so there is exactly one place that can reach the
+  // internet, and one place that can refuse to.
+
+  if (req.method === 'GET' && url.pathname === '/api/network') {
+    json(res, 200, { enabled: readConfig(DATA).network === true })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/network') {
+    readBody(req, 1e4)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        if (typeof body.enabled !== 'boolean') throw new Error('enabled must be true or false')
+        const cfg = writeConfig(DATA, { network: body.enabled })
+        push(`[net] network access ${body.enabled ? 'on' : 'off'}`)
+        json(res, 200, { enabled: cfg.network === true })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/fetch') {
+    if (readConfig(DATA).network !== true) {
+      json(res, 403, { error: 'network access is off' })
+      return
+    }
+    readBody(req, 1e4)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const started = Date.now()
+        try {
+          const page = await readUrl(body.url, { maxChars: body.maxChars })
+          push(`[net] read ${page.url} → ${page.bytes} bytes, ${page.text.length} chars, ${Date.now() - started} ms`)
+          json(res, 200, page)
+        } catch (err) {
+          push(`[net] refused ${String(body.url).slice(0, 200)} — ${err.message}`)
+          json(res, 400, { error: err.message })
+        }
       })
       .catch((err) => json(res, 400, { error: err.message }))
     return

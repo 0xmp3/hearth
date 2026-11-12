@@ -29,6 +29,8 @@ type Props = {
   layout: 'sidebar' | 'tabs'
   onLayout: (value: 'sidebar' | 'tabs') => void
   onServerChanged: () => void
+  network: { enabled: boolean; available: boolean | null; busy: boolean; error: string | null }
+  onNetwork: (enabled: boolean) => void
 }
 
 export default function SettingsDialog({
@@ -57,6 +59,8 @@ export default function SettingsDialog({
   layout,
   onLayout,
   onServerChanged,
+  network,
+  onNetwork,
 }: Props) {
   return (
     <Dialog
@@ -198,10 +202,39 @@ export default function SettingsDialog({
       </section>
 
       <section className="setting">
+        <h3>Network</h3>
+        <p className="hint">
+          Off by default. While it is on, the model can read a page you give it, and that
+          request — and nothing else — leaves this machine from the manager, never from the
+          browser. Pages on this machine are refused, and every read is listed in the
+          reply it belongs to.
+        </p>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={network.enabled}
+            disabled={network.busy || network.available === false}
+            onChange={(e) => onNetwork(e.target.checked)}
+          />
+          <span>
+            Allow network access
+            <em>
+              {network.available === false
+                ? 'the manager is not running — start it with "npm run manager"'
+                : network.enabled
+                  ? 'on — the model may fetch pages you name'
+                  : 'off — nothing can leave this machine'}
+            </em>
+          </span>
+        </label>
+        {network.error && <div className="error">{network.error}</div>}
+      </section>
+
+      <section className="setting">
         <h3>About</h3>
         <p className="hint">
-          Hearth v1.1 — a local chat client. Nothing leaves this machine; there is no
-          account and no telemetry.
+          Hearth — a local chat client. No account, no telemetry. Nothing leaves this machine
+          unless you switch network access on above.
         </p>
       </section>
     </Dialog>

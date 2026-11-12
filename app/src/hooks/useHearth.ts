@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as db from '../lib/db'
 import { listModels, type ModelInfo } from '../lib/models'
 import { agentTurn, type TurnDriver } from '../lib/turn'
-import { TOOL_GUIDANCE, runTool as executeTool } from '../lib/tools'
+import { runTool as executeTool, toolGuidance } from '../lib/tools'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
 import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
@@ -30,6 +30,8 @@ export function useHearth(
   resolveCharacter?: (characterId: string | null | undefined) => db.Character | null,
   maxTokens = 2048,
   resolveProfile?: (profileId: string | null | undefined) => db.Profile | null,
+  /** Egress is on: the web tools are offered and the guidance mentions them. */
+  network = false,
 ) {
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -138,7 +140,7 @@ export function useHearth(
       character,
       buildSummaryBlock(summary),
       memory,
-      TOOL_GUIDANCE,
+      toolGuidance(network),
       conv.systemPrompt?.trim() || SYSTEM_PROMPT,
     ]
       .filter(Boolean)
@@ -222,7 +224,10 @@ export function useHearth(
         },
         // Tools run in the app, not the model: this is the only place a reply
         // can change anything outside itself.
-        runTool: (name, args) => executeTool(name, args, conv.id),
+        runTool: (name, args) => executeTool(name, args, conv.id, { network }),
+        // The driver builds the tool list from this, so egress off means the
+        // request never even declares web_read.
+        network,
         onTool: (record) => {
           const draft = draftRef.current
           if (!draft) return

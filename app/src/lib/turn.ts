@@ -6,7 +6,7 @@
 // one it is running.
 
 import { streamChat, type ChatMessage, type Stats } from './stream'
-import { TOOLS, type ToolRecord } from './tools'
+import { toolsFor, type ToolRecord } from './tools'
 import { BASE_URL } from './config'
 
 /**
@@ -25,6 +25,8 @@ export type TurnContext = {
   onStats: (stats: Stats) => void
   /** Executes a tool call. Absent when tools are switched off. */
   runTool?: (name: string, args: unknown) => Promise<{ text: string; record: ToolRecord }>
+  /** Egress switched on: adds the web tools to the request. */
+  network?: boolean
   /** Reports a tool that ran, for the message body. */
   onTool?: (record: ToolRecord) => void
 }
@@ -55,7 +57,7 @@ export const agentTurn: TurnDriver = async (ctx) => {
       messages,
       maxTokens: ctx.maxTokens,
       signal: ctx.signal,
-      tools: ctx.runTool ? TOOLS : undefined,
+      tools: ctx.runTool ? toolsFor(ctx.network === true) : undefined,
       onDelta: (text) => ctx.append('content', text),
       onReasoning: (text) => ctx.append('reasoning', text),
       onStats: ctx.onStats,

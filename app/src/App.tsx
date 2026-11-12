@@ -16,6 +16,7 @@ import { useHearth } from './hooks/useHearth'
 import { useCharacters } from './hooks/useCharacters'
 import { useProfiles } from './hooks/useProfiles'
 import { usePrefs } from './hooks/usePrefs'
+import { useNetwork } from './hooks/useNetwork'
 import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
@@ -56,6 +57,8 @@ export default function App() {
     name: profiles.active?.name || 'User',
     avatar: profiles.active?.avatar || undefined,
   }
+  // Egress is the manager's decision; this is the app's copy of the answer.
+  const net = useNetwork()
   // agentTurn, not chatTurn: it runs tools and falls back to a single call when
   // there are none. Passing chatTurn here silently disabled the tool loop.
   const h = useHearth(
@@ -63,6 +66,7 @@ export default function App() {
     (characterId) => characters.resolve(characterId),
     prefs.maxTokens,
     (profileId) => profiles.resolve(profileId),
+    net.enabled,
   )
   const t = useTheme()
 
@@ -310,6 +314,15 @@ export default function App() {
             )}
 
             <div className="topbar-right">
+              {net.enabled && (
+                <button
+                  className="ghost net"
+                  onClick={() => setDialog('settings')}
+                  title="Network access is on: pages the model reads leave this machine"
+                >
+                  net
+                </button>
+              )}
               {h.stats?.tokPerSec && (
                 <button className="link tok" onClick={() => setDialog('stats')} title="Speed history">
                   {h.stats.tokPerSec.toFixed(1)} tok/s
@@ -415,6 +428,8 @@ export default function App() {
           onModels={() => setDialog('models')}
           layout={prefs.layout}
           onLayout={(value) => updatePrefs({ layout: value })}
+          network={{ enabled: net.enabled, available: net.available, busy: net.busy, error: net.error }}
+          onNetwork={(value) => void net.toggle(value)}
           onServerChanged={() => void h.reloadModels()}
         />
       )}
