@@ -98,6 +98,19 @@ function MessageView({
                 ))}
               </ul>
             ) : null}
+            {message.tools?.length ? (
+              <ul className="msg-tools">
+                {message.tools.map((t, i) => (
+                  <li key={i} className={t.ok ? 'tool-ok' : 'tool-bad'}>
+                    {t.name === 'remember'
+                      ? t.summary === 'already known'
+                        ? 'memory: already known'
+                        : `remembered: ${t.summary}`
+                      : `${t.name}: ${t.summary}`}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {isUser ? (
               message.content
             ) : message.content ? (

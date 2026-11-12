@@ -18,7 +18,7 @@ import { usePrefs } from './hooks/usePrefs'
 import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
-import { chatTurn } from './lib/turn'
+import { agentTurn } from './lib/turn'
 import { countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
@@ -37,7 +37,9 @@ export default function App() {
   const personas = usePersonas()
   const prompts = usePrompts()
   const { prefs, update: updatePrefs } = usePrefs()
-  const h = useHearth(chatTurn, (personaId) => personas.resolve(personaId), prefs.maxTokens)
+  // agentTurn, not chatTurn: it runs tools and falls back to a single call when
+  // there are none. Passing chatTurn here silently disabled the tool loop.
+  const h = useHearth(agentTurn, (personaId) => personas.resolve(personaId), prefs.maxTokens)
   const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)

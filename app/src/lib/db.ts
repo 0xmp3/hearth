@@ -34,6 +34,8 @@ export type Message = {
   truncated?: boolean
   /** Files sent with this message. Text is inlined; images go as content parts. */
   attachments?: Attachment[]
+  /** Tools this reply ran, so the activity is visible and not a black box. */
+  tools?: { name: string; ok: boolean; summary: string }[]
   stats?: {
     tokPerSec?: number
     promptTokPerSec?: number

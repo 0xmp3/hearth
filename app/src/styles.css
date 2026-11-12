@@ -261,6 +261,26 @@ button, select, textarea { font: inherit; color: inherit; }
   padding: 0 var(--space-4) var(--space-6);
 }
 
+.msg-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  font-size: 11px;
+}
+
+.msg-tools li {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.msg-tools .tool-bad { color: var(--danger); border-color: var(--danger); }
+
 .memory-list {
   list-style: none;
   margin: 0;

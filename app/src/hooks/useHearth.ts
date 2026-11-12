@@ -4,7 +4,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as db from '../lib/db'
 import { listModels, type ModelInfo } from '../lib/models'
-import { chatTurn, type TurnDriver } from '../lib/turn'
+import { agentTurn, type TurnDriver } from '../lib/turn'
+import { TOOL_GUIDANCE, runTool as executeTool } from '../lib/tools'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { suggestTitle } from '../lib/title'
 import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
@@ -17,7 +18,7 @@ import {
 } from '../lib/memory'
 
 export function useHearth(
-  turn: TurnDriver = chatTurn,
+  turn: TurnDriver = agentTurn,
   resolvePersona?: (personaId: string | null | undefined) => db.Persona | null,
   maxTokens = 2048,
 ) {
@@ -116,7 +117,8 @@ export function useHearth(
     const persona = resolvePersona?.(conv.personaId)?.systemPrompt?.trim()
     // Who you are, what is known about the user, what this chat is about.
     const memory = buildMemoryBlock(memories, conv.id, conv.personaId ?? null)
-    const system = [persona, memory, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
+    // Tools are on for every turn, so the guidance is always relevant.
+    const system = [persona, memory, TOOL_GUIDANCE, conv.systemPrompt?.trim() || SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n')
     return [
@@ -172,6 +174,18 @@ export function useHearth(
               model: conv.model || model,
             }
           }
+        },
+        // Tools run in the app, not the model: this is the only place a reply
+        // can change anything outside itself.
+        runTool: (name, args) => executeTool(name, args, conv.id),
+        onTool: (record) => {
+          const draft = draftRef.current
+          if (!draft) return
+          draft.tools = [...(draft.tools ?? []), record]
+          const snapshot = { ...draft }
+          setMessages((prev) => prev.map((m) => (m.id === snapshot.id ? snapshot : m)))
+          // A saved memory should show up in the panel without a reload.
+          if (record.ok && record.name === 'remember') void db.listMemories().then(setMemories)
         },
       })
     } catch (err) {

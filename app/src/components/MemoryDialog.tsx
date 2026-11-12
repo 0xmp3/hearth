@@ -89,8 +89,8 @@ export default function MemoryDialog({
       }
     >
       <p className="hint">
-        Facts the app keeps about you, sent with every message. Extraction runs in the
-        background every {20} messages; anything wrong here can be edited or deleted.
+        Facts the app keeps about you, sent with every message. The model saves facts as you talk; a
+        background sweep catches the rest every 40 messages; anything wrong here can be edited or deleted.
       </p>
 
       <div className="row">

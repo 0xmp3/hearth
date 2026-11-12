@@ -1,7 +1,9 @@
 // The whole project in miniature: POST, read the body as a stream,
 // split SSE frames, accumulate deltas, stop when asked.
-
-import { MAX_TOKENS } from './config'
+//
+// Tool calls arrive the same way text does — as fragments — but they are keyed
+// by index and their `arguments` is a JSON string built up piece by piece. The
+// accumulator below is the only place that difference matters.
 
 export type Stats = {
   tokPerSec?: number
@@ -12,7 +14,7 @@ export type Stats = {
   cacheN?: number
   /** Milliseconds from request to first token. */
   ttftMs?: number
-  /** 'stop' | 'length' | ... — 'length' means the budget ran out. */
+  /** 'stop' | 'length' | 'tool_calls' | ... — 'length' means the budget ran out. */
   finishReason?: string
 }
 
@@ -20,11 +22,28 @@ export type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
+export type ToolCall = {
+  id: string
+  name: string
+  /** The raw JSON the model emitted. Parsed by the caller, not here. */
+  arguments: string
+}
+
 export type ChatMessage = {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   /** A plain string, or parts when the message carries images. */
   content: string | ContentPart[]
   reasoning?: string
+  /** Present on an assistant turn that asked for tools. */
+  tool_calls?: ToolCall[]
+  /** Present on a tool result, pointing back at the call it answers. */
+  tool_call_id?: string
+}
+
+export type ToolDef = {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
 }
 
 export type StreamOptions = {
@@ -33,31 +52,70 @@ export type StreamOptions = {
   messages: ChatMessage[]
   maxTokens: number
   signal: AbortSignal
+  tools?: ToolDef[]
   onDelta: (text: string) => void
   onReasoning?: (text: string) => void
   onStats?: (stats: Stats) => void
 }
 
-export async function streamChat(opts: StreamOptions): Promise<void> {
+export type StreamResult = {
+  /** Empty when the model answered with text instead of calling a tool. */
+  toolCalls: ToolCall[]
+}
+
+/** Serialise a message for the wire, keeping the tool fields. */
+function toWire(m: ChatMessage) {
+  const out: Record<string, unknown> = { role: m.role, content: m.content }
+  if (m.tool_calls?.length) {
+    out.tool_calls = m.tool_calls.map((c) => ({
+      id: c.id,
+      type: 'function',
+      function: { name: c.name, arguments: c.arguments },
+    }))
+  }
+  if (m.tool_call_id) out.tool_call_id = m.tool_call_id
+  return out
+}
+
+export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
   const startedAt = performance.now()
   let firstTokenAt: number | null = null
+
+  // Keyed by index: the server sends id and name once, then argument fragments.
+  const pending = new Map<number, { id: string; name: string; args: string }>()
+
+  function collect(): ToolCall[] {
+    return [...pending.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .filter(([, v]) => v.name)
+      .map(([, v]) => ({ id: v.id, name: v.name, arguments: v.args }))
+  }
+
+  const body: Record<string, unknown> = {
+    model: opts.model,
+    messages: opts.messages.map(toWire),
+    stream: true,
+    max_tokens: opts.maxTokens,
+  }
+  if (opts.tools?.length) {
+    body.tools = opts.tools.map((t) => ({
+      type: 'function',
+      function: { name: t.name, description: t.description, parameters: t.parameters },
+    }))
+    body.tool_choice = 'auto'
+  }
 
   const res = await fetch(`${opts.baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal: opts.signal,
-    body: JSON.stringify({
-      model: opts.model,
-      messages: opts.messages.map(({ role, content }) => ({ role, content })),
-      stream: true,
-      max_tokens: opts.maxTokens,
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {
     // llama-server answers 503 with {"error":{"message":"Loading model"}} while it loads.
-    const body = await res.text().catch(() => '')
-    throw new Error(`backend ${res.status}: ${body.slice(0, 200) || res.statusText}`)
+    const text = await res.text().catch(() => '')
+    throw new Error(`backend ${res.status}: ${text.slice(0, 200) || res.statusText}`)
   }
   if (!res.body) throw new Error('no response body')
 
@@ -80,7 +138,7 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
       for (const line of frame.split('\n')) {
         if (!line.startsWith('data:')) continue
         const payload = line.slice(5).trim()
-        if (payload === '[DONE]') return
+        if (payload === '[DONE]') return { toolCalls: collect() }
 
         let chunk: any
         try {
@@ -90,6 +148,7 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
         }
 
         const delta = chunk.choices?.[0]?.delta
+
         // Reasoning models stream thinking in a separate field. Dropping it
         // makes the app look frozen until the answer starts.
         if (delta?.reasoning_content) {
@@ -99,6 +158,18 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
         if (delta?.content) {
           if (firstTokenAt === null) firstTokenAt = performance.now()
           opts.onDelta(delta.content)
+        }
+
+        if (Array.isArray(delta?.tool_calls)) {
+          if (firstTokenAt === null) firstTokenAt = performance.now()
+          for (const part of delta.tool_calls) {
+            const index = typeof part.index === 'number' ? part.index : 0
+            const slot = pending.get(index) ?? { id: '', name: '', args: '' }
+            if (part.id) slot.id = part.id
+            if (part.function?.name) slot.name = part.function.name
+            if (part.function?.arguments) slot.args += part.function.arguments
+            pending.set(index, slot)
+          }
         }
 
         const finish = chunk.choices?.[0]?.finish_reason
@@ -119,4 +190,6 @@ export async function streamChat(opts: StreamOptions): Promise<void> {
       }
     }
   }
+
+  return { toolCalls: collect() }
 }

@@ -13,8 +13,12 @@
 import { BASE_URL } from './config'
 import * as db from './db'
 
-/** Messages between captures. Frequent enough to be useful, rare enough to be free. */
-export const CAPTURE_EVERY = 20
+/**
+ * Messages between captures. The model now writes through a tool as it goes, so
+ * this is a backstop sweep for what it did not think to save — not the primary
+ * writer. Half as often as before, because the fast path is the tool.
+ */
+export const CAPTURE_EVERY = 40
 
 /** Roughly 500 tokens. Past this, memory starts crowding out the conversation. */
 const MAX_BLOCK_CHARS = 2000
