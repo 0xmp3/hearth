@@ -11,6 +11,7 @@
 // becomes the fallback.
 
 import { BASE_URL } from './config'
+import { MANAGER } from './backend'
 import * as db from './db'
 
 /**
@@ -99,11 +100,12 @@ export async function extractMemories(
 
   const known = existing.map((m) => ({ id: m.id, text: m.text }))
 
-  const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
+  const res = await fetch(`${MANAGER}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },
     signal,
     body: JSON.stringify({
+      baseUrl: BASE_URL,
       model,
       messages: [
         { role: 'system', content: SYSTEM },

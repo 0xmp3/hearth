@@ -14,6 +14,7 @@
 // a number we already have.
 
 import { BASE_URL } from './config'
+import { MANAGER } from './backend'
 import * as db from './db'
 
 /** Share of the context a request may fill before the oldest turns are condensed. */
@@ -153,10 +154,14 @@ async function summarise(
     .filter(Boolean)
     .join('\n')
 
-  const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
+  // Through the manager, like every other model call: a backend without CORS
+  // (Strata) is unreachable from the page, and compaction must not silently stop
+  // working just because the engine changed.
+  const res = await fetch(`${MANAGER}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },
     body: JSON.stringify({
+      baseUrl: BASE_URL,
       model,
       messages: [
         { role: 'system', content: SYSTEM },

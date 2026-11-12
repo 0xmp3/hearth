@@ -1,4 +1,5 @@
 import type { ChatMessage } from './stream'
+import { MANAGER } from './backend'
 
 // Auxiliary calls like this one must not think. On a reasoning model, a 32-token
 // budget gets spent entirely on reasoning and returns empty content — measured:
@@ -14,11 +15,12 @@ type TitleRequest = {
 }
 
 async function request(req: TitleRequest, think: boolean): Promise<string | null> {
-  const res = await fetch(`${req.baseUrl}/v1/chat/completions`, {
+  const res = await fetch(`${MANAGER}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },
     signal: req.signal,
     body: JSON.stringify({
+      baseUrl: req.baseUrl,
       model: req.model,
       messages: req.messages,
       stream: false,

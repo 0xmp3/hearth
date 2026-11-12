@@ -5,6 +5,8 @@
 // by index and their `arguments` is a JSON string built up piece by piece. The
 // accumulator below is the only place that difference matters.
 
+import { MANAGER } from './backend'
+
 export type Stats = {
   tokPerSec?: number
   promptTokPerSec?: number
@@ -105,11 +107,14 @@ export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
     body.tool_choice = 'auto'
   }
 
-  const res = await fetch(`${opts.baseUrl}/v1/chat/completions`, {
+  // Through the manager, not straight at the backend: the browser cannot reach
+  // an arbitrary local server (most send no CORS headers), and going through one
+  // process means a backend is swapped by changing a string, not a code path.
+  const res = await fetch(`${MANAGER}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },
     signal: opts.signal,
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, baseUrl: opts.baseUrl }),
   })
 
   if (!res.ok) {

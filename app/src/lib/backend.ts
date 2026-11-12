@@ -1,7 +1,7 @@
 // Client for the local backend manager (server/index.mjs). Optional: if it is
 // not running, the app still works against whatever server is on the port.
 
-const MANAGER = 'http://127.0.0.1:8090'
+export const MANAGER = 'http://127.0.0.1:8090'
 
 export type ManagerStatus = {
   running: boolean

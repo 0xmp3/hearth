@@ -48,6 +48,12 @@ export function useHearth(
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<db.Message[]>([])
   const [models, setModels] = useState<ModelInfo[]>([])
+
+  // A conversation remembers the model it was using. If the backend no longer
+  // serves it — you switched from Strata back to llama.cpp — fall back to the
+  // first model instead of sending an id the server will reject.
+  const resolveModel = (id?: string | null) =>
+    id && models.some((m) => m.id === id) ? id : models[0]?.id ?? ''
   const [model, setModel] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [stats, setStats] = useState<Stats | null>(null)
@@ -96,7 +102,7 @@ export function useHearth(
         setMemories(mems)
         if (convs[0]) {
           setActiveId(convs[0].id)
-          setModel(convs[0].model || list[0]?.id || '')
+          setModel(list.some((m) => m.id === convs[0].model) ? convs[0].model : list[0]?.id ?? '')
           setMessages(await db.listMessages(convs[0].id))
         }
       } catch (err) {
@@ -206,7 +212,17 @@ export function useHearth(
     setStreaming(true)
 
     try {
-      const activeModel = conv.model || model
+      const activeModel = resolveModel(conv.model) || model
+
+      // The conversation follows the backend. If the model it remembered is not
+      // served any more, record the one actually used, so the next turn does not
+      // have to resolve it again and the record stops lying.
+      if (conv.model !== activeModel) {
+        const updated = { ...conv, model: activeModel, updatedAt: Date.now() }
+        convsRef.current = convsRef.current.map((c) => (c.id === conv.id ? updated : c))
+        void db.putConversation(updated)
+        setConversations((prev) => prev.map((c) => (c.id === conv.id ? updated : c)))
+      }
       await turn({
         model: activeModel,
         messages: history,
@@ -229,7 +245,7 @@ export function useHearth(
             draftRef.current.stats = {
               ...(draftRef.current.stats ?? {}),
               ...s,
-              model: conv.model || model,
+              model: activeModel,
             }
           }
         },
@@ -299,7 +315,7 @@ export function useHearth(
     if (streaming) return
     const conv = conversations.find((c) => c.id === id)
     setActiveId(id)
-    if (conv?.model) setModel(conv.model)
+    if (conv?.model && models.length) setModel(resolveModel(conv.model))
     setStats(null)
     setError(null)
     setMessages(await db.listMessages(id))
@@ -340,7 +356,7 @@ export function useHearth(
     if (activeId === id) {
       const next = remaining[0] ?? null
       setActiveId(next?.id ?? null)
-      if (next?.model) setModel(next.model)
+      if (next?.model && models.length) setModel(resolveModel(next.model))
       setMessages(next ? await db.listMessages(next.id) : [])
     }
   }
@@ -533,7 +549,7 @@ export function useHearth(
       // Facts only: a summary is not a fact, and must never be offered to the
       // model as something it can retire.
       const existing = factsOf(await db.listMemories())
-      const extraction = await extractMemories(conv.model || model, msgs, existing)
+      const extraction = await extractMemories(resolveModel(conv.model) || model, msgs, existing)
       if (!extraction) return { added: 0, removed: 0 }
 
       const result = await applyExtraction(extraction, existing, conv.id)
@@ -565,12 +581,12 @@ export function useHearth(
     const summary = currentSummary(await db.listMemories(), conv.id)
     // Sized to the server's allocation: a summary that overflows the context
     // fails with a 400 and looks like the feature is broken.
-    const ctx = models.find((m) => m.id === (conv.model || model))?.ctx ?? 0
+    const ctx = models.find((m) => m.id === (resolveModel(conv.model) || model))?.ctx ?? 0
     setCondensing(true)
     try {
       const result = await compactConversation({
         conversationId: conv.id,
-        model: conv.model || model,
+        model: resolveModel(conv.model) || model,
         messages: all,
         summary,
         ctx,
@@ -588,7 +604,7 @@ export function useHearth(
 
   /** Fires only when the last request really did fill most of the context. */
   async function maybeCompact(conv: db.Conversation, promptTokens: number) {
-    const ctx = models.find((m) => m.id === (conv.model || model))?.ctx ?? 0
+    const ctx = models.find((m) => m.id === (resolveModel(conv.model) || model))?.ctx ?? 0
     if (!ctx || !promptTokens) return
     const msgs = await db.listMessages(conv.id)
     const summary = currentSummary(await db.listMemories(), conv.id)
@@ -612,7 +628,7 @@ export function useHearth(
             .join('\n')
 
     try {
-      const title = await suggestTitle(BASE_URL, conv.model || model, firstText, reply)
+      const title = await suggestTitle(BASE_URL, resolveModel(conv.model) || model, firstText, reply)
       if (!title) return
       // Same staleness trap as `touch`: the title call takes ~0.2s, long enough
       // for another field to change. Merge over the freshest copy.
@@ -646,7 +662,7 @@ export function useHearth(
       setMessages(await db.listMessages(current.id))
     } else if (convs[0]) {
       setActiveId(convs[0].id)
-      setModel(convs[0].model || model)
+      setModel(resolveModel(convs[0].model) || model)
       setMessages(await db.listMessages(convs[0].id))
     } else {
       setActiveId(null)

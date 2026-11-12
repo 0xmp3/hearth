@@ -576,6 +576,101 @@ const server = createServer((req, res) => {
     return
   }
 
+  // ---- backend proxy ------------------------------------------------------
+  //
+  // The browser cannot talk to an arbitrary local server: most of them send no
+  // CORS headers (Strata's Python server does not), and the ones that do are the
+  // exception. So the manager proxies the two calls the app needs and the app
+  // only ever talks to 127.0.0.1:8090.
+  //
+  // This is also the seam where a backend that is not llama.cpp gets normalised:
+  // one place to fix a shape, instead of one per engine.
+
+  const backendBase = (raw) => {
+    const url = new URL(String(raw || `http://127.0.0.1:${LLAMA_PORT}`))
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new Error('the backend must be an http(s) address')
+    }
+    return url.origin + url.pathname.replace(/\/+$/, '')
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/models') {
+    let base
+    try {
+      base = backendBase(url.searchParams.get('baseUrl'))
+    } catch (err) {
+      json(res, 400, { error: err.message })
+      return
+    }
+    fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(20_000) })
+      .then(async (upstream) => {
+        const text = await upstream.text()
+        res.writeHead(upstream.status, {
+          'Content-Type': upstream.headers.get('content-type') ?? 'application/json',
+          'Content-Length': Buffer.byteLength(text),
+          'Cache-Control': 'no-store',
+        })
+        res.end(text)
+      })
+      .catch((err) => json(res, 502, { error: `backend unreachable: ${err.message}` }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/chat') {
+    readBody(req, 25e6)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const base = backendBase(body.baseUrl)
+        delete body.baseUrl
+
+        // A client that goes away must stop the generation, not leave it running
+        // against a 48 GB model.
+        const abort = new AbortController()
+        res.on('close', () => {
+          if (!res.writableEnded) abort.abort()
+        })
+
+        const upstream = await fetch(`${base}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: abort.signal,
+        })
+
+        res.writeHead(upstream.status, {
+          'Content-Type': upstream.headers.get('content-type') ?? 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Accel-Buffering': 'no',
+        })
+
+        if (!upstream.body) {
+          res.end()
+          return
+        }
+        const reader = upstream.body.getReader()
+        try {
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            // Write, and wait for the socket to drain: a slow reader must not
+            // make the manager buffer a whole reply in memory.
+            if (!res.write(Buffer.from(value))) {
+              await new Promise((resolve) => res.once('drain', resolve))
+            }
+          }
+        } catch (err) {
+          if (!abort.signal.aborted) push(`[chat] stream ended: ${err.message}`)
+        } finally {
+          res.end()
+        }
+      })
+      .catch((err) => {
+        if (!res.headersSent) json(res, 502, { error: `backend unreachable: ${err.message}` })
+        else res.end()
+      })
+    return
+  }
+
   // ---- speech -------------------------------------------------------------
   //
   // The manager owns the engine and the clips; the app only asks for audio. The

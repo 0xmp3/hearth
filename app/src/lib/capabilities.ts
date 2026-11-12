@@ -6,6 +6,7 @@
 // bug rather than a missing capability.
 
 import { BASE_URL } from './config'
+import { listModels } from './models'
 
 const cache = new Map<string, boolean>()
 
@@ -13,6 +14,18 @@ export async function supportsVision(model: string): Promise<boolean> {
   if (!model) return false
   const hit = cache.get(model)
   if (hit !== undefined) return hit
+
+  // The model list is the better source when the backend states it: Strata
+  // publishes `architecture.input_modalities`, and llama.cpp does not.
+  try {
+    const info = (await listModels(BASE_URL)).find((m) => m.id === model)
+    if (info?.vision !== undefined) {
+      cache.set(model, info.vision)
+      return info.vision
+    }
+  } catch {
+    // fall through to /props
+  }
 
   try {
     const res = await fetch(`${BASE_URL}/props?model=${encodeURIComponent(model)}`)
