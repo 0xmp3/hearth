@@ -67,6 +67,11 @@ export default function MemoryDialog({
     await onChanged()
   }
 
+  async function keep(m: db.Memory) {
+    await db.putMemory({ ...m, pending: false, updatedAt: Date.now() })
+    await onChanged()
+  }
+
   async function capture() {
     setNote(null)
     const result = await onCapture()
@@ -91,7 +96,10 @@ export default function MemoryDialog({
 
   // A summary is not a fact, and it is too long to sit in the fact lists.
   const summaries = memories.filter((m) => m.kind === 'summary')
-  const facts = memories.filter((m) => m.kind !== 'summary')
+  // Pending facts are proposals, not memories: they are not in any prompt until
+  // they are kept, so they get their own section at the top.
+  const pending = memories.filter((m) => m.kind !== 'summary' && m.pending)
+  const facts = memories.filter((m) => m.kind !== 'summary' && !m.pending)
   const groups: db.MemoryScope[] = ['global', 'conversation', 'character']
 
   return (
@@ -111,8 +119,9 @@ export default function MemoryDialog({
       }
     >
       <p className="hint">
-        Facts the app keeps about you, sent with every message. The model saves facts as you talk; a
-        background sweep catches the rest every 40 messages; anything wrong here can be edited or deleted.
+        Facts the app keeps about you, sent with every message. The model offers them as you talk and
+        you decide what stays; a background sweep catches the rest every 40 messages. Anything here can
+        be edited or deleted.
       </p>
 
       <div className="row">
@@ -179,6 +188,31 @@ export default function MemoryDialog({
                     </button>
                   </>
                 )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {pending.length > 0 && (
+        <section className="setting">
+          <h3>Waiting for you</h3>
+          <p className="hint">
+            The model offered these. They are not in any prompt until you keep them.
+          </p>
+          <ul className="memory-list">
+            {pending.map((m) => (
+              <li key={m.id} className="memory-item">
+                <span className="memory-text">
+                  <span className="character-note">{SCOPE_LABEL[m.scope]}</span>
+                  {m.text}
+                </span>
+                <button className="ghost tiny" onClick={() => void keep(m)}>
+                  keep
+                </button>
+                <button className="ghost tiny" onClick={() => void remove(m.id)}>
+                  forget
+                </button>
               </li>
             ))}
           </ul>

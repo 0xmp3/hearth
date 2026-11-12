@@ -15,6 +15,10 @@ type Props = {
   onEdit: (text: string) => void
   /** Absent when speech is off or unavailable: no button, no dead control. */
   speech?: { speaking: boolean; starting: boolean; onToggle: () => void }
+  /** Pending memories the user has not answered yet, by id. */
+  pendingMemoryIds?: Set<string>
+  onKeepMemory?: (id: string) => void
+  onForgetMemory?: (id: string) => void
 }
 
 function stamp(ts: number): string {
@@ -35,6 +39,9 @@ function MessageView({
   onRegenerate,
   onEdit,
   speech,
+  pendingMemoryIds,
+  onKeepMemory,
+  onForgetMemory,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -124,11 +131,21 @@ function MessageView({
               <ul className="msg-tools">
                 {message.tools.map((t, i) => (
                   <li key={i} className={t.ok ? 'tool-ok' : 'tool-bad'}>
-                    {t.name === 'remember'
-                      ? t.summary === 'already known'
-                        ? 'memory: already known'
-                        : `remembered: ${t.summary}`
-                      : `${t.name}: ${t.summary}`}
+                    {t.name === 'remember' && t.memoryId && pendingMemoryIds?.has(t.memoryId) ? (
+                      <span className="remember-offer">
+                        remember “{t.summary}”?
+                        <button className="link" onClick={() => onKeepMemory?.(t.memoryId!)}>
+                          keep
+                        </button>
+                        <button className="link" onClick={() => onForgetMemory?.(t.memoryId!)}>
+                          forget
+                        </button>
+                      </span>
+                    ) : t.name === 'remember' ? (
+                      t.summary === 'already known' ? 'memory: already known' : `memory: ${t.summary}`
+                    ) : (
+                      `${t.name}: ${t.summary}`
+                    )}
                   </li>
                 ))}
               </ul>

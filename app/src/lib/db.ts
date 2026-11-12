@@ -54,7 +54,7 @@ export type Message = {
   /** Files sent with this message. Text is inlined; images go as content parts. */
   attachments?: Attachment[]
   /** Tools this reply ran, so the activity is visible and not a black box. */
-  tools?: { name: string; ok: boolean; summary: string }[]
+  tools?: { name: string; ok: boolean; summary: string; memoryId?: string }[]
   stats?: {
     tokPerSec?: number
     promptTokPerSec?: number
@@ -537,6 +537,11 @@ export type Memory = {
   updatedAt: number
   /** Where it came from, so the review panel can say. */
   sourceConversationId?: string
+  /**
+   * Written by the model but not yet accepted by the user. Pending facts are
+   * never injected into a prompt: the model proposes, the user decides.
+   */
+  pending?: boolean
 }
 
 export async function listMemories(): Promise<Memory[]> {

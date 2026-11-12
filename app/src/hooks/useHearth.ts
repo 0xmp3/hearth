@@ -572,6 +572,20 @@ export function useHearth(
     }
   }
 
+  // A pending fact is the model's proposal. Keeping it is the only way it ever
+  // reaches a prompt; forgetting it deletes the record outright.
+  async function keepMemory(id: string) {
+    const memory = (await db.listMemories()).find((m) => m.id === id)
+    if (!memory) return
+    await db.putMemory({ ...memory, pending: false, updatedAt: Date.now() })
+    setMemories(await db.listMemories())
+  }
+
+  async function forgetMemory(id: string) {
+    await db.deleteMemory(id)
+    setMemories(await db.listMemories())
+  }
+
   async function maybeCapture(conv: db.Conversation, msgs: db.Message[]) {
     const last = (await db.getMeta<number>(`memory.capture.${conv.id}`)) ?? 0
     const fresh = msgs.filter((m) => m.createdAt > last)
@@ -723,5 +737,7 @@ export function useHearth(
       return capture(conv, await db.listMessages(conv.id))
     },
     refreshMemories: async () => setMemories(await db.listMemories()),
+    keepMemory,
+    forgetMemory,
   }
 }

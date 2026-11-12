@@ -234,6 +234,11 @@ export default function App() {
       : (h.activeConversation.profileId ?? INHERIT)
     : INHERIT
 
+  // A pending fact is only offered while it is still pending: keeping or
+  // forgetting it makes the chip disappear, because the memory is gone from this
+  // set on the next render.
+  const pendingMemoryIds = new Set(h.memories.filter((m) => m.pending).map((m) => m.id))
+
   const ctxTotal = h.models.find((m) => m.id === h.model)?.ctx ?? 8192
   const lastStats = [...h.messages].reverse().find((m) => m.stats?.promptTokens)?.stats
   const ctxUsed = lastStats ? (lastStats.promptTokens ?? 0) + (lastStats.completionTokens ?? 0) : 0
@@ -467,6 +472,9 @@ export default function App() {
           <Chat
             messages={h.messages}
             streaming={h.streaming}
+            pendingMemoryIds={pendingMemoryIds}
+            onKeepMemory={(id) => void h.keepMemory(id)}
+            onForgetMemory={(id) => void h.forgetMemory(id)}
             speech={
               speechState?.enabled && speechState?.ready
                 ? { speakingId: speech.speakingId, starting: speech.starting, onToggle: speech.toggle }

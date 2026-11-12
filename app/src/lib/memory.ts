@@ -215,6 +215,8 @@ export function buildMemoryBlock(
   const relevant = memories.filter((m) => {
     // Summaries are injected by their own block, and are not facts.
     if (m.kind === 'summary') return false
+    // A fact the user has not accepted yet is not something the model knows.
+    if (m.pending) return false
     if (m.scope === 'global') return true
     if (m.scope === 'conversation') return m.ownerId === conversationId
     if (m.scope === 'character') return m.ownerId === characterId

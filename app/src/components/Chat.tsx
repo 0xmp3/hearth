@@ -12,6 +12,9 @@ type Props = {
   onEdit: (text: string) => void
   /** Undefined when speech is off: the per-message button then never renders. */
   speech?: { speakingId: string | null; starting: boolean; onToggle: (message: Msg) => void }
+  pendingMemoryIds?: Set<string>
+  onKeepMemory?: (id: string) => void
+  onForgetMemory?: (id: string) => void
 }
 
 export default function Chat({
@@ -23,6 +26,9 @@ export default function Chat({
   onRegenerate,
   onEdit,
   speech,
+  pendingMemoryIds,
+  onKeepMemory,
+  onForgetMemory,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -67,6 +73,9 @@ export default function Chat({
             isLastUser={i === lastUserIdx}
             onRegenerate={onRegenerate}
             onEdit={onEdit}
+            pendingMemoryIds={pendingMemoryIds}
+            onKeepMemory={onKeepMemory}
+            onForgetMemory={onForgetMemory}
             speech={
               speech
                 ? {
