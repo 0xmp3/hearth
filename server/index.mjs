@@ -110,6 +110,7 @@ function start({ ctx, ngl }) {
   const cfg = readConfig(DATA)
   const useCtx = ctx ?? cfg.ctx ?? 16384
   const useNgl = ngl ?? cfg.ngl ?? 99
+  const useHost = cfg.bindHost || '127.0.0.1'
 
   // A preset is generated on every start so new models and new projectors are
   // picked up. It replaces --models-dir: the preset lists every model itself,
@@ -126,6 +127,7 @@ function start({ ctx, ngl }) {
   const args = [
     '--models-preset', preset.path,
     '--models-max', '1',
+    '--host', useHost,
     '--port', String(LLAMA_PORT),
     '--jinja',
     // Exposes /metrics, which is where the KV cache and slot numbers come from.
@@ -666,7 +668,7 @@ const server = createServer((req, res) => {
     readBody(req, 1e5)
       .then((buf) => {
         const patch = buf.length ? JSON.parse(buf.toString()) : {}
-        const allowed = ['enginePath', 'modelsDir', 'ctx', 'ngl']
+        const allowed = ['enginePath', 'modelsDir', 'ctx', 'ngl', 'bindHost']
         const clean = Object.fromEntries(
           Object.entries(patch).filter(([k]) => allowed.includes(k)),
         )

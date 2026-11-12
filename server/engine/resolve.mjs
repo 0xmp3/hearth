@@ -21,6 +21,10 @@ const DEFAULTS = {
   modelsDir: null,
   ctx: 16384,
   ngl: 99,
+  // Loopback by default. Set to 0.0.0.0 (or a host-only adapter address) only
+  // when something outside this machine needs the model — a test VM, say — and
+  // scope the firewall rule to that subnet at the same time.
+  bindHost: '127.0.0.1',
   // Egress is off until the user says otherwise, and it is the manager that
   // enforces it: the app asks, the manager decides.
   network: false,

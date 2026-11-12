@@ -2,6 +2,8 @@ import { useState } from 'react'
 import Dialog from './Dialog'
 import { BUDGET_STOPS, formatTokens, nearestStopIndex } from '../lib/budget'
 import BackendPanel from './BackendPanel'
+import { setBackendUrl, DEFAULT_BACKEND } from '../lib/config'
+import { manager } from '../lib/backend'
 import SearxngPanel from './SearxngPanel'
 import type { ModelInfo } from '../lib/models'
 
@@ -80,6 +82,9 @@ export default function SettingsDialog({
   onWorkspace,
   onCheckWorkspace,
 }: Props) {
+  const [backendUrl, setBackendUrlDraft] = useState(baseUrl)
+  const [bindHost, setBindHost] = useState('')
+  const [backendNote, setBackendNote] = useState<string | null>(null)
   const [wsPath, setWsPath] = useState(workspace.path)
   const [wsCheck, setWsCheck] = useState<string | null>(null)
   const [wsChecking, setWsChecking] = useState(false)
@@ -218,7 +223,59 @@ export default function SettingsDialog({
         <h3>Backend</h3>
         <label className="field">
           <span>Endpoint</span>
-          <input value={baseUrl} readOnly />
+          <input
+            type="text"
+            value={backendUrl}
+            spellCheck={false}
+            onChange={(e) => setBackendUrlDraft(e.target.value)}
+            onBlur={() => {
+              const next = backendUrl.trim()
+              if (!next || next === baseUrl) return
+              setBackendNote(
+                setBackendUrl(next) ? null : 'that is not an http(s) address — nothing changed',
+              )
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            }}
+          />
+          <em className="hint">
+            where llama-server is. Change it when the model runs elsewhere — a test VM pointing at
+            the host, for example — and the page reloads to use it. Default {DEFAULT_BACKEND}.
+          </em>
+          {backendNote && <em className="hint">{backendNote}</em>}
+        </label>
+
+        <label className="field">
+          <span>Bind address</span>
+          <div className="row">
+            <input
+              type="text"
+              value={bindHost}
+              placeholder="127.0.0.1"
+              spellCheck={false}
+              onChange={(e) => setBindHost(e.target.value)}
+            />
+            <button
+              className="ghost"
+              disabled={!bindHost.trim()}
+              onClick={async () => {
+                try {
+                  await manager.saveConfig({ bindHost: bindHost.trim() } as never)
+                  setBackendNote(`bind address saved: ${bindHost.trim()} — restart the server to apply`)
+                } catch (err) {
+                  setBackendNote((err as Error).message)
+                }
+              }}
+            >
+              Save
+            </button>
+          </div>
+          <em className="hint">
+            what llama-server listens on. Loopback by default; <code>0.0.0.0</code> exposes it to
+            anything that can reach this machine, so scope a firewall rule to the one subnet that
+            needs it.
+          </em>
         </label>
         <p className="hint">
           {models.length === 0
