@@ -28,6 +28,8 @@ export type Conversation = {
    * which is the point: a conversation can narrow its tools, never widen them.
    */
   tools?: ToolMode
+  /** Absent means the backend's own default. */
+  effort?: EffortMode
 }
 
 /**
@@ -36,6 +38,15 @@ export type Conversation = {
  * agent work wants everything.
  */
 export type ToolMode = 'default' | 'files' | 'web' | 'none'
+
+/**
+ * How hard the model is allowed to think before answering.
+ *
+ * `default` sends nothing, which is the only honest choice for a backend we know
+ * nothing about. The rest are passed through as `reasoning_effort`; a backend
+ * that does not know the value ignores it, and one that rejects it says so.
+ */
+export type EffortMode = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'max'
 
 import type { Attachment } from './attachments'
 

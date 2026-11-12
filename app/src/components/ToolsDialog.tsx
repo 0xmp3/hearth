@@ -1,5 +1,5 @@
 import Dialog from './Dialog'
-import type { ToolMode } from '../lib/db'
+import type { EffortMode, ToolMode } from '../lib/db'
 
 // What this conversation is allowed to use.
 //
@@ -12,6 +12,8 @@ import type { ToolMode } from '../lib/db'
 type Props = {
   mode: ToolMode
   onMode: (mode: ToolMode) => void
+  effort: EffortMode
+  onEffort: (effort: EffortMode) => void
   available: { web: boolean; search: boolean; files: boolean }
   onClose: () => void
 }
@@ -39,10 +41,10 @@ const MODES: { id: ToolMode; name: string; detail: string }[] = [
   },
 ]
 
-export default function ToolsDialog({ mode, onMode, available, onClose }: Props) {
+export default function ToolsDialog({ mode, onMode, effort, onEffort, available, onClose }: Props) {
   return (
     <Dialog
-      title="Tools in this conversation"
+      title="This conversation"
       onClose={onClose}
       footer={<button onClick={onClose}>Done</button>}
     >
@@ -77,6 +79,24 @@ export default function ToolsDialog({ mode, onMode, available, onClose }: Props)
           )
         })}
       </ul>
+
+      <h4>Thinking</h4>
+      <p className="hint">
+        How much the model may think before it answers. A backend that does not support this
+        ignores it; one that rejects the value will say so in the reply.
+      </p>
+      <label className="field">
+        <span>Reasoning effort</span>
+        <select value={effort} onChange={(e) => onEffort(e.target.value as EffortMode)}>
+          <option value="default">backend default</option>
+          <option value="none">none — answer immediately</option>
+          <option value="minimal">minimal</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="max">max</option>
+        </select>
+      </label>
 
       <p className="hint">
         Available now: {available.files ? 'folder' : 'no folder'} ·{' '}

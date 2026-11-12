@@ -53,6 +53,8 @@ export type StreamOptions = {
   model: string
   messages: ChatMessage[]
   maxTokens: number
+  /** 'default' or a reasoning_effort value. */
+  effort?: string
   signal: AbortSignal
   tools?: ToolDef[]
   onDelta: (text: string) => void
@@ -98,6 +100,13 @@ export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
     messages: opts.messages.map(toWire),
     stream: true,
     max_tokens: opts.maxTokens,
+  }
+  // Two conventions for the same idea, because there are two: OpenAI-style
+  // `reasoning_effort`, and the chat-template flag llama.cpp exposes. Send both
+  // and let the backend ignore the one it does not know.
+  if (opts.effort && opts.effort !== 'default') {
+    body.reasoning_effort = opts.effort
+    if (opts.effort === 'none') body.chat_template_kwargs = { enable_thinking: false }
   }
   if (opts.tools?.length) {
     body.tools = opts.tools.map((t) => ({

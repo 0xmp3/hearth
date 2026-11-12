@@ -263,6 +263,7 @@ export function useHearth(
         // The driver builds the tool list from this, so a family that is off
         // never reaches the request at all.
         tools: policyForConv(conv),
+        effort: conv.effort,
         onTool: (record) => {
           const draft = draftRef.current
           if (!draft) return
@@ -409,6 +410,12 @@ export function useHearth(
   // it mid-thread only changes what the next reply can reach.
   async function setConversationTools(tools: db.ToolMode | undefined) {
     await patchConversation({ tools })
+  }
+
+  // Reasoning effort belongs to the conversation for the same reason tools do:
+  // a coding thread and a chat thread want different budgets.
+  async function setConversationEffort(effort: db.EffortMode | undefined) {
+    await patchConversation({ effort })
   }
 
   async function setSystemPrompt(text: string) {
@@ -710,6 +717,7 @@ export function useHearth(
     setConversationCharacter,
     setConversationProfile,
     setConversationTools,
+    setConversationEffort,
     streaming,
     stats,
     error,

@@ -36,6 +36,8 @@ export type TurnContext = {
   runTool?: (name: string, args: unknown) => Promise<{ text: string; record: ToolRecord }>
   /** Which tool families this turn may use. Absent means none. */
   tools?: ToolPolicy
+  /** Reasoning effort for this conversation; absent means the backend default. */
+  effort?: string
   /** Reports a tool that ran, for the message body. */
   onTool?: (record: ToolRecord) => void
 }
@@ -99,6 +101,7 @@ export const agentTurn: TurnDriver = async (ctx) => {
       messages,
       maxTokens: ctx.maxTokens,
       signal: ctx.signal,
+      effort: ctx.effort,
       tools: ctx.runTool ? toolList(ctx.tools) : undefined,
       onDelta: say,
       onReasoning: think,

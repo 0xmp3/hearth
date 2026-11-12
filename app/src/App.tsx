@@ -142,6 +142,7 @@ export default function App() {
     if (last?.role === 'assistant' && last.content.trim()) latest.current.speech.toggle(last)
   }, [h.streaming])
   const toolMode = h.activeConversation?.tools ?? 'default'
+  const effortMode = h.activeConversation?.effort ?? 'default'
   const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)
@@ -416,6 +417,16 @@ export default function App() {
             )}
 
             <div className="topbar-right">
+              {effortMode !== 'default' && (
+                <button
+                  className="ghost tools"
+                  onClick={() => setDialog('tools')}
+                  disabled={!h.activeConversation}
+                  title="How hard this conversation may think"
+                >
+                  think: {effortMode}
+                </button>
+              )}
               {toolMode !== 'default' && (
                 <button
                   className="ghost tools"
@@ -629,6 +640,8 @@ export default function App() {
         <ToolsDialog
           mode={toolMode}
           onMode={(mode) => void h.setConversationTools(mode === 'default' ? undefined : mode)}
+          effort={effortMode}
+          onEffort={(effort) => void h.setConversationEffort(effort === 'default' ? undefined : effort)}
           available={{ web: net.enabled, search: net.searchReady, files: ws.ready }}
           onClose={() => setDialog(null)}
         />
