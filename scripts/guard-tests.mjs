@@ -12,6 +12,7 @@
 
 import { mkdir, writeFile, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { request } from 'node:http'
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`)
@@ -37,14 +38,43 @@ function check(name, ok, detail = '') {
   }
 }
 
-async function call(path, body) {
-  const res = await fetch(MANAGER + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },
-    body: JSON.stringify(body ?? {}),
+/**
+ * Plain http.request rather than fetch: undici's keep-alive sockets are still
+ * open when the process ends, and Node 24 aborts on teardown with
+ * "!(handle->flags & UV_HANDLE_CLOSING)" — a crash message on a passing run.
+ * One request per socket has no such state.
+ */
+function call(path, body, method = 'POST') {
+  return new Promise((resolve) => {
+    const payload = body === undefined ? null : JSON.stringify(body ?? {})
+    const req = request(
+      MANAGER + path,
+      {
+        method,
+        agent: false,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Hearth': '1',
+          ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+        },
+      },
+      (res) => {
+        let raw = ''
+        res.setEncoding('utf8')
+        res.on('data', (chunk) => (raw += chunk))
+        res.on('end', () => {
+          try {
+            resolve({ status: res.statusCode ?? 0, body: JSON.parse(raw || '{}') })
+          } catch {
+            resolve({ status: res.statusCode ?? 0, body: {} })
+          }
+        })
+      },
+    )
+    req.on('error', (err) => resolve({ status: 0, body: { error: err.message } }))
+    if (payload) req.write(payload)
+    req.end()
   })
-  const json = await res.json().catch(() => ({}))
-  return { status: res.status, body: json }
 }
 
 async function buildFixture() {
@@ -74,9 +104,7 @@ async function buildFixture() {
 async function main() {
   console.log(`Hearth workspace guard tests\n  manager: ${MANAGER}\n  fixture: ${ROOT}\n`)
   // Where the machine's workspace pointed before this ran, so it can be put back.
-  const before = await fetch(MANAGER + '/api/workspace', { headers: { 'X-Hearth': '1' } })
-    .then((r) => r.json())
-    .catch(() => null)
+  const before = await call('/api/workspace', undefined, 'GET').then((r) => r.body)
   const { root, symlinked } = await buildFixture()
 
   try {
@@ -139,5 +167,5 @@ async function main() {
 
 main().catch((err) => {
   console.error('guard tests could not run:', err.message)
-  process.exit(2)
+  process.exitCode = 2
 })
