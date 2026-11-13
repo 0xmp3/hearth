@@ -29,6 +29,15 @@ type Prefs = {
   speechVoice: string
   /** Width of the page preview panel, in px. Remembered across sessions. */
   previewWidth: number
+  /**
+   * Whether animated text may move.
+   *
+   * `system` follows `prefers-reduced-motion`, which on Windows is the
+   * "Animation effects" switch and is off on a lot of performance-tuned
+   * machines. That default is right — but it is a system-wide setting, not a
+   * decision about this app, so it can be overridden deliberately here.
+   */
+  motion: 'system' | 'on' | 'off'
 }
 
 const DEFAULTS: Prefs = {
@@ -45,6 +54,7 @@ const DEFAULTS: Prefs = {
   autoSpeak: false,
   speechVoice: '',
   previewWidth: 480,
+  motion: 'system',
 }
 
 function load(): Prefs {

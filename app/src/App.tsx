@@ -187,6 +187,12 @@ export default function App() {
     setPreview(null)
   }, [h.activeId])
 
+  // `system` leaves the attribute off, so the media query decides. Anything
+  // else is a deliberate override of a system-wide setting.
+  useEffect(() => {
+    document.documentElement.dataset.motion = prefs.motion
+  }, [prefs.motion])
+
   // The count is shown in Settings and in the clear dialog, so both refresh it.
   useEffect(() => {
     if (dialog === 'settings' || dialog === 'clear') void countMessages().then(setMessageCount)
@@ -595,6 +601,8 @@ export default function App() {
           onSpeechVoice={(id) => updatePrefs({ speechVoice: id })}
           showReasoning={prefs.showReasoning}
           onShowReasoning={(value) => updatePrefs({ showReasoning: value })}
+          motion={prefs.motion}
+          onMotion={(value) => updatePrefs({ motion: value })}
           maxTokens={prefs.maxTokens}
           onMaxTokens={(value) => updatePrefs({ maxTokens: value })}
           modelCtx={ctxTotal}
@@ -684,6 +692,7 @@ export default function App() {
           onEffort={(effort) => void h.setConversationEffort(effort === 'default' ? undefined : effort)}
           style={styleMode}
           onStyle={(style) => void h.setConversationStyle(style === 'off' ? undefined : style)}
+          motion={prefs.motion}
           available={{ web: net.enabled, search: net.searchReady, files: ws.ready }}
           onClose={() => setDialog(null)}
         />

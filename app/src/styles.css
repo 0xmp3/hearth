@@ -1722,3 +1722,23 @@ pre.log {
   text-align: center;
   color: color-mix(in srgb, hsl(var(--voice-h) 72% 55%) 70%, var(--text));
 }
+
+/* Motion is a system preference first and an app preference second. Windows'
+   "Animation effects" switch is off on a lot of performance-tuned machines, and
+   Chrome reports that as prefers-reduced-motion — which is the right default,
+   but it is a decision about the whole OS, not about this app. So the preference
+   can be overridden explicitly, and the attribute selector outscores the media
+   query without needing `!important`. */
+[data-motion='on'] .fx-move {
+  animation:
+    fx-glow 3.4s ease-in-out infinite,
+    fx-breathe 7s ease-in-out infinite;
+}
+
+[data-motion='off'] .fx-move {
+  animation: none;
+  text-shadow: none;
+}
+
+/* A note that is not an error: the feature is working, it is just silent. */
+.warn-note { color: var(--warn); }

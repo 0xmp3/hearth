@@ -23,7 +23,9 @@ type Props = {
   onExportTheme: () => void
   onTheme: (id: string) => void
   showReasoning: boolean
-  onShowReasoning: (value: boolean) => void
+  onShowReasoning: (v: boolean) => void
+  motion: 'system' | 'on' | 'off'
+  onMotion: (v: 'system' | 'on' | 'off') => void
   maxTokens: number
   onMaxTokens: (value: number) => void
   modelCtx?: number
@@ -69,6 +71,8 @@ export default function SettingsDialog({
   onTheme,
   showReasoning,
   onShowReasoning,
+  motion,
+  onMotion,
   maxTokens,
   onMaxTokens,
   modelCtx,
@@ -204,6 +208,20 @@ export default function SettingsDialog({
             <em>the thinking block above replies, when the model produces one</em>
           </span>
         </label>
+
+        <label className="field">
+          <span>Motion</span>
+          <select value={motion} onChange={(e) => onMotion(e.target.value as 'system' | 'on' | 'off')}>
+            <option value="system">follow the system</option>
+            <option value="on">always animate</option>
+            <option value="off">never animate</option>
+          </select>
+        </label>
+        <p className="hint">
+          Animated text only moves when this allows it. Windows' "Animation effects" switch is
+          off on a lot of machines, and the browser reports that as a request for less motion —
+          which Hearth follows by default. Override it here if you want the effects anyway.
+        </p>
 
         <label className="check">
           <input

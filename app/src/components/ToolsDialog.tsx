@@ -1,4 +1,5 @@
 import Dialog from './Dialog'
+import { useReducedMotion } from '../hooks/useReducedMotion'
 import type { EffortMode, TextStyle, ToolMode } from '../lib/db'
 
 // What this conversation is allowed to use.
@@ -16,6 +17,8 @@ type Props = {
   onEffort: (effort: EffortMode) => void
   style: TextStyle
   onStyle: (style: TextStyle) => void
+  /** The app's motion preference, so the note below can be honest. */
+  motion: 'system' | 'on' | 'off'
   available: { web: boolean; search: boolean; files: boolean }
   onClose: () => void
 }
@@ -50,9 +53,15 @@ export default function ToolsDialog({
   onEffort,
   style,
   onStyle,
+  motion,
   available,
   onClose,
 }: Props) {
+  // Motion is silenced by the system on a lot of machines, and "expressive"
+  // then colours without moving — which looks like a broken feature unless it
+  // is named.
+  const reduced = useReducedMotion()
+  const silenced = style === 'expressive' && (motion === 'off' || (motion === 'system' && reduced))
   return (
     <Dialog
       title="This conversation"
@@ -124,6 +133,13 @@ export default function ToolsDialog({
           <option value="expressive">expressive — colour, and a slow drift</option>
         </select>
       </label>
+      {silenced && (
+        <p className="hint warn-note">
+          {motion === 'off'
+            ? 'Motion is switched off in Settings, so this will colour without moving.'
+            : 'Your system asks for less motion, so this will colour without moving. Settings → Appearance → Motion overrides that.'}
+        </p>
+      )}
 
       <p className="hint">
         Available now: {available.files ? 'folder' : 'no folder'} ·{' '}
