@@ -11,6 +11,7 @@ import * as db from './db'
 import { manager } from './backend'
 import type { ToolDef } from './stream'
 import { WORKSPACE_GUIDANCE, WORKSPACE_TOOLS } from './workspaceTools'
+import { clockReading } from './clock'
 
 /** What the UI shows for a tool that ran. */
 export type ToolRecord = {
@@ -118,6 +119,17 @@ export type ToolPolicy = {
 
 export const NO_TOOLS: ToolPolicy = { network: false, search: false, files: false, memory: false }
 
+/**
+ * Whether the turn has any tool at all.
+ *
+ * `now` grants no capability — it reads a clock — so it rides along with whatever
+ * else is allowed rather than being switchable itself. A conversation set to "no
+ * tools" gets none, which is the promise that mode makes.
+ */
+export function hasAnyTool(policy: ToolPolicy): boolean {
+  return policy.memory || policy.network || policy.files
+}
+
 export function toolsFor(policy: ToolPolicy): ToolDef[] {
   const tools: ToolDef[] = []
   if (policy.memory) tools.push(...TOOLS)
@@ -125,6 +137,10 @@ export function toolsFor(policy: ToolPolicy): ToolDef[] {
   if (policy.network && policy.search) tools.push(WEB_SEARCH)
   // The workspace is local: it does not care whether egress is on.
   if (policy.files) tools.push(...WORKSPACE_TOOLS)
+  // Last, and only when something else is already on: a model that reads the
+  // clock without being asked about the date is doing something useful, but it
+  // must not be the reason a "no tools" conversation suddenly has tools.
+  if (hasAnyTool(policy)) tools.push(NOW)
   return tools
 }
 
@@ -143,6 +159,31 @@ const SEARCH_GUIDANCE = `web_search finds pages; web_read reads one. Search firs
 
 Be decisive with these. One search per question, then at most two pages, is enough for almost anything. If those do not contain the answer, say what you found and what you could not confirm — do not run more searches hoping for a better page. Never claim to have searched unless you called the tool, and never keep a citation you did not read.`
 
+/**
+ * The `now` tool.
+ *
+ * It exists because the system prompt's date line is a *claim*, and a claim is
+ * exactly what a model discounts when it has decided the setting is fictional:
+ * asked for the best anime of 2026 it answered "as an AI, I can't actually browse
+ * the real 2026 internet… in this persona/simulated environment". A tool result
+ * is a different kind of thing — a reading taken at the moment it asked — and
+ * models trust observations over assertions.
+ *
+ * The description does the persuading, because that is the text the model reads
+ * when deciding whether to look. */
+export const NOW: ToolDef = {
+  name: 'now',
+  description:
+    'Read the current date and time from this machine. Call it whenever the answer depends on ' +
+    'what today is — "latest", "this year", "best of <year>", recent releases, prices, news — and ' +
+    'before saying what year it is. Your memory of the current date cannot be trusted: your ' +
+    'training data ends earlier, so you may believe it is a year or two before it really is. ' +
+    'This tool returns what the clock actually says.',
+  parameters: { type: 'object', properties: {}, additionalProperties: false },
+}
+
+const NOW_GUIDANCE = `You also have now, which reads this machine's clock. Use it when a question turns on the current date, and any time you find yourself about to reason "it is probably 2024/2025" — that belief comes from your training data, not from the world, and this machine knows better. A conversation may be set in another era; that makes the *setting* fictional, not the clock. Do not argue with its result or describe the date as simulated.`
+
 export function toolGuidance(policy: ToolPolicy): string {
   // The guidance must describe exactly the tools in the request: a paragraph
   // about a tool the model was not given is how it starts promising browsing.
@@ -153,10 +194,11 @@ export function toolGuidance(policy: ToolPolicy): string {
     if (policy.search) parts.push(SEARCH_GUIDANCE)
   }
   if (policy.files) parts.push(WORKSPACE_GUIDANCE)
+  if (hasAnyTool(policy)) parts.push(NOW_GUIDANCE)
   return parts.join('\n\n')
 }
 
-const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH, ...WORKSPACE_TOOLS].map((t) => t.name))
+const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH, ...WORKSPACE_TOOLS, NOW].map((t) => t.name))
 
 function sameText(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
@@ -183,6 +225,15 @@ export async function runTool(
 
   if (name === 'web_read') return readPage(args, opts.network)
   if (name === 'web_search') return searchWeb(args, opts)
+  // No policy gate: reading the clock grants nothing, and refusing it would
+  // leave the model with only the claim this tool exists to settle.
+  if (name === 'now') {
+    const reading = clockReading()
+    return {
+      text: reading,
+      record: { name: 'now', ok: true, summary: reading.split('\n')[0] },
+    }
+  }
   if (name === 'list_files' || name === 'search_files' || name === 'read_file') {
     return runWorkspaceTool(name, args, opts.files)
   }
