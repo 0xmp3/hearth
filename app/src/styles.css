@@ -1616,3 +1616,109 @@ pre.log {
     box-shadow: calc(-1 * var(--space-4)) 0 var(--space-10) var(--scrim);
   }
 }
+
+/* ---------- emphasis styling (v1.40) ---------- */
+
+/* A character's colour is a *hue*, never a colour: saturation and lightness
+   have to come from the theme, or the same character is unreadable on Parchment
+   and invisible on Hearth. Mixing the vivid hue with the theme's own text
+   colour is what makes one hue work on both. */
+:root { --voice-h: 28; }
+
+/* Registered so `expressive` can animate it; a plain custom property would snap
+   rather than interpolate. */
+@property --fx-h {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 28;
+}
+
+.fx-strong,
+.fx-soft {
+  --fx-h: var(--voice-h);
+  color: color-mix(in srgb, hsl(var(--fx-h) 72% 55%) 62%, var(--text));
+}
+
+/* Italics are the softer slot: the same identity, less of it. */
+.fx-soft {
+  color: color-mix(in srgb, hsl(var(--fx-h) 72% 55%) 44%, var(--text));
+}
+
+/* The character's own colour, on their avatar. MSN's coloured display name, in
+   the one place this app has a name to colour. */
+.msg.voiced .avatar {
+  box-shadow: 0 0 0 2px color-mix(in srgb, hsl(var(--voice-h) 72% 55%) 70%, transparent);
+}
+
+@keyframes fx-glow {
+  0%, 100% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 var(--space-4) color-mix(in srgb, currentColor 50%, transparent); }
+}
+
+/* A slow breathe around the character's hue rather than a full rainbow: the
+   text stays the same identity while it moves, instead of cycling through
+   colours that were never chosen. */
+@keyframes fx-breathe {
+  0%, 100% { --fx-h: calc(var(--voice-h) - 16); }
+  50% { --fx-h: calc(var(--voice-h) + 16); }
+}
+
+.fx-move {
+  animation:
+    fx-glow 3.4s ease-in-out infinite,
+    fx-breathe 7s ease-in-out infinite;
+}
+
+/* Non-negotiable, and not a preference: motion this app adds is decoration, and
+   decoration never overrules a stated need for stillness. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-move {
+    animation: none;
+    text-shadow: none;
+  }
+}
+
+/* ---------- the character colour picker ---------- */
+
+.hue-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.hue-slider {
+  flex: 1;
+  height: var(--space-4);
+  appearance: none;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    hsl(0 72% 55%),
+    hsl(60 72% 55%),
+    hsl(120 72% 55%),
+    hsl(180 72% 55%),
+    hsl(240 72% 55%),
+    hsl(300 72% 55%),
+    hsl(360 72% 55%)
+  );
+}
+
+.hue-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.hue-swatch {
+  min-width: var(--space-11);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  text-align: center;
+  color: color-mix(in srgb, hsl(var(--voice-h) 72% 55%) 70%, var(--text));
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Message from './Message'
 import type { PreviewDoc } from '../lib/preview'
-import type { Message as Msg } from '../lib/db'
+import type { Message as Msg, TextStyle } from '../lib/db'
 
 type Props = {
   messages: Msg[]
@@ -17,6 +17,10 @@ type Props = {
   onKeepMemory?: (id: string) => void
   onForgetMemory?: (id: string) => void
   onPreview?: (doc: PreviewDoc) => void
+  /** How this conversation dresses emphasis. */
+  fx?: TextStyle
+  /** The hue a message's character writes in, if it has one. */
+  hueFor?: (characterId?: string | null) => number | undefined
 }
 
 export default function Chat({
@@ -32,6 +36,8 @@ export default function Chat({
   onKeepMemory,
   onForgetMemory,
   onPreview,
+  fx,
+  hueFor,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -80,6 +86,8 @@ export default function Chat({
             onKeepMemory={onKeepMemory}
             onForgetMemory={onForgetMemory}
             onPreview={onPreview}
+            fx={fx}
+            hue={hueFor?.(m.characterId)}
             speech={
               speech
                 ? {

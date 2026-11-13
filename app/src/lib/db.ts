@@ -30,6 +30,8 @@ export type Conversation = {
   tools?: ToolMode
   /** Absent means the backend's own default. */
   effort?: EffortMode
+  /** How this conversation dresses emphasis. Absent means `off`. */
+  style?: TextStyle
 }
 
 /**
@@ -294,8 +296,29 @@ export type Character = {
    * audible, so it belongs here rather than in settings alone.
    */
   voice?: string | null
+  /**
+   * 0–359, the character's colour — their version of MSN's coloured display
+   * name. A hue rather than a hex, because the *saturation and lightness must
+   * come from the theme*: the same hue has to be readable on a dark field and
+   * on Parchment's white one, and only the theme knows which it is.
+   */
+  hue?: number
   createdAt: number
 }
+
+/**
+ * How a reply's emphasis is dressed.
+ *
+ * `off` is plain bold. `colour` tints it with the character's hue. `expressive`
+ * adds a slow drift on top. It is a *render-time* transform: nothing is stored
+ * differently, the prompt is untouched, the text the model sees is unchanged,
+ * and turning it off restores the plain reply instantly.
+ *
+ * That is the whole reason this is cheap. It reads a decision the model already
+ * made — it bolded the phrase it thought mattered — instead of asking it to make
+ * a new one it has no way to judge.
+ */
+export type TextStyle = 'off' | 'colour' | 'expressive'
 
 export type Prompt = {
   id: string

@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import Markdown from './Markdown'
 import Avatar from './Avatar'
 import { extractPreview, type PreviewDoc } from '../lib/preview'
-import type { Message as Msg } from '../lib/db'
+import type { Message as Msg, TextStyle } from '../lib/db'
 
 type Props = {
   message: Msg
@@ -22,6 +22,10 @@ type Props = {
   onForgetMemory?: (id: string) => void
   /** Open this reply's page in the preview panel. */
   onPreview?: (doc: PreviewDoc) => void
+  /** How this conversation dresses emphasis. */
+  fx?: TextStyle
+  /** This message's character hue, if it has one. Drives the effect colour. */
+  hue?: number
 }
 
 function stamp(ts: number): string {
@@ -46,6 +50,8 @@ function MessageView({
   onKeepMemory,
   onForgetMemory,
   onPreview,
+  fx = 'off',
+  hue,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -67,6 +73,11 @@ function MessageView({
   // Only a settled reply is a page: while it streams the fence is half-written,
   // and a half-written document is a blank panel that flickers.
   const page = !isUser && !streaming && message.content ? extractPreview(message.content) : null
+  // Effects wait for the reply to settle too. A message re-renders on every
+  // token, and an animated span inside it would repaint the whole time — the
+  // GPU is shared with inference, so that is tokens, not just frames.
+  const settled = !(streaming && isLast)
+  const dress = isUser || !settled ? 'off' : fx
 
   function startEdit() {
     setDraft(message.content)
@@ -74,7 +85,10 @@ function MessageView({
   }
 
   return (
-    <article className={`msg ${message.role}`}>
+    <article
+      className={`msg ${message.role}${hue !== undefined ? ' voiced' : ''}`}
+      style={hue !== undefined ? ({ ['--voice-h' as string]: hue } as React.CSSProperties) : undefined}
+    >
       <Avatar
         name={isUser ? user.name : resolveIdentity(message.characterId).name}
         src={isUser ? user.avatar : resolveIdentity(message.characterId).avatar}
@@ -160,7 +174,7 @@ function MessageView({
             {isUser ? (
               message.content
             ) : message.content ? (
-              <Markdown text={message.content} />
+              <Markdown text={message.content} fx={dress} />
             ) : empty && streaming ? (
               <span className="dots">…</span>
             ) : empty && !isUser ? (

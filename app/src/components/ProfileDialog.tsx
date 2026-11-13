@@ -47,6 +47,8 @@ type CharacterDraft = {
   avatar?: string
   /** '' means the app-wide voice. */
   voice?: string
+  /** 0–359. Undefined means "no colour of their own". */
+  hue?: number
   createdAt: number
 }
 
@@ -110,6 +112,7 @@ export default function ProfileDialog(props: Props) {
       note: characterDraft.note.trim() || undefined,
       systemPrompt: characterDraft.systemPrompt.trim() || undefined,
       voice: characterDraft.voice || undefined,
+      hue: characterDraft.hue,
       avatar: characterDraft.avatar,
       createdAt: characterDraft.createdAt,
     })
@@ -258,6 +261,7 @@ export default function ProfileDialog(props: Props) {
                       note: c.note ?? '',
                       systemPrompt: c.systemPrompt ?? '',
                       voice: c.voice ?? '',
+                      hue: c.hue,
                       avatar: c.avatar,
                       createdAt: c.createdAt,
                     })
@@ -326,6 +330,31 @@ export default function ProfileDialog(props: Props) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="field">
+              <span>Colour</span>
+              <div className="hue-row">
+                <input
+                  type="range"
+                  min={0}
+                  max={359}
+                  value={characterDraft.hue ?? 28}
+                  onChange={(e) => setCharacterDraft({ ...characterDraft, hue: Number(e.target.value) })}
+                  className="hue-slider"
+                  style={{ ['--voice-h' as string]: characterDraft.hue ?? 28 } as React.CSSProperties}
+                />
+                <span
+                  className="hue-swatch"
+                  style={{ ['--voice-h' as string]: characterDraft.hue ?? 28 } as React.CSSProperties}
+                >
+                  {characterDraft.hue === undefined ? 'none' : characterDraft.hue}
+                </span>
+                {characterDraft.hue !== undefined && (
+                  <button className="link" onClick={() => setCharacterDraft({ ...characterDraft, hue: undefined })}>
+                    clear
+                  </button>
+                )}
+              </div>
             </label>
             <div className="row end">
               <button className="ghost" onClick={() => setCharacterDraft(null)}>Cancel</button>

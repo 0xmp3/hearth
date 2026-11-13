@@ -151,6 +151,7 @@ export default function App() {
   }, [h.streaming])
   const toolMode = h.activeConversation?.tools ?? 'default'
   const effortMode = h.activeConversation?.effort ?? 'default'
+  const styleMode = h.activeConversation?.style ?? 'off'
   const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)
@@ -434,6 +435,16 @@ export default function App() {
             )}
 
             <div className="topbar-right">
+              {styleMode !== 'off' && (
+                <button
+                  className="ghost tools"
+                  onClick={() => setDialog('tools')}
+                  disabled={!h.activeConversation}
+                  title="How this conversation dresses emphasis"
+                >
+                  text: {styleMode}
+                </button>
+              )}
               {effortMode !== 'default' && (
                 <button
                   className="ghost tools"
@@ -520,6 +531,8 @@ export default function App() {
             onRegenerate={h.regenerate}
             onEdit={h.editLast}
             onPreview={(doc) => setPreview(doc)}
+            fx={styleMode}
+            hueFor={(characterId) => characters.resolve(characterId)?.hue}
           />
 
           {h.error && <div className="error">{h.error}</div>}
@@ -669,6 +682,8 @@ export default function App() {
           onMode={(mode) => void h.setConversationTools(mode === 'default' ? undefined : mode)}
           effort={effortMode}
           onEffort={(effort) => void h.setConversationEffort(effort === 'default' ? undefined : effort)}
+          style={styleMode}
+          onStyle={(style) => void h.setConversationStyle(style === 'off' ? undefined : style)}
           available={{ web: net.enabled, search: net.searchReady, files: ws.ready }}
           onClose={() => setDialog(null)}
         />

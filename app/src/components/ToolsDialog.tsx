@@ -1,5 +1,5 @@
 import Dialog from './Dialog'
-import type { EffortMode, ToolMode } from '../lib/db'
+import type { EffortMode, TextStyle, ToolMode } from '../lib/db'
 
 // What this conversation is allowed to use.
 //
@@ -14,6 +14,8 @@ type Props = {
   onMode: (mode: ToolMode) => void
   effort: EffortMode
   onEffort: (effort: EffortMode) => void
+  style: TextStyle
+  onStyle: (style: TextStyle) => void
   available: { web: boolean; search: boolean; files: boolean }
   onClose: () => void
 }
@@ -41,7 +43,16 @@ const MODES: { id: ToolMode; name: string; detail: string }[] = [
   },
 ]
 
-export default function ToolsDialog({ mode, onMode, effort, onEffort, available, onClose }: Props) {
+export default function ToolsDialog({
+  mode,
+  onMode,
+  effort,
+  onEffort,
+  style,
+  onStyle,
+  available,
+  onClose,
+}: Props) {
   return (
     <Dialog
       title="This conversation"
@@ -95,6 +106,22 @@ export default function ToolsDialog({ mode, onMode, effort, onEffort, available,
           <option value="medium">medium</option>
           <option value="high">high</option>
           <option value="max">max</option>
+        </select>
+      </label>
+
+      <h4>Text</h4>
+      <p className="hint">
+        How bold and italic phrases are dressed. The model already decides which words
+        matter — it emphasises them — so this only changes what that emphasis looks like.
+        Phrases over 60 characters are left alone: a whole sentence is an explanation, not
+        a flourish. Nothing is sent to the model, and turning this off is instant.
+      </p>
+      <label className="field">
+        <span>Emphasis</span>
+        <select value={style} onChange={(e) => onStyle(e.target.value as TextStyle)}>
+          <option value="off">plain — bold is bold</option>
+          <option value="colour">colour — the character's hue</option>
+          <option value="expressive">expressive — colour, and a slow drift</option>
         </select>
       </label>
 

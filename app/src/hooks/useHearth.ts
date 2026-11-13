@@ -418,6 +418,10 @@ export function useHearth(
     await patchConversation({ effort })
   }
 
+  async function setConversationStyle(style: db.TextStyle | undefined) {
+    await patchConversation({ style })
+  }
+
   async function setSystemPrompt(text: string) {
     await patchConversation({ systemPrompt: text })
   }
@@ -718,6 +722,7 @@ export function useHearth(
     setConversationProfile,
     setConversationTools,
     setConversationEffort,
+    setConversationStyle,
     streaming,
     stats,
     error,
