@@ -27,6 +27,8 @@ type Prefs = {
   autoSpeak: boolean
   /** Voice id for characters that do not pin one. */
   speechVoice: string
+  /** Width of the page preview panel, in px. Remembered across sessions. */
+  previewWidth: number
 }
 
 const DEFAULTS: Prefs = {
@@ -42,6 +44,7 @@ const DEFAULTS: Prefs = {
   layout: 'sidebar',
   autoSpeak: false,
   speechVoice: '',
+  previewWidth: 480,
 }
 
 function load(): Prefs {

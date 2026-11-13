@@ -14,6 +14,8 @@ import MemoryDialog from './components/MemoryDialog'
 import ToolsDialog from './components/ToolsDialog'
 import PromptsDialog from './components/PromptsDialog'
 import ModelsDialog from './components/ModelsDialog'
+import PreviewPanel from './components/PreviewPanel'
+import { extractPreview, type PreviewDoc } from './lib/preview'
 import { useHearth } from './hooks/useHearth'
 import { useCharacters } from './hooks/useCharacters'
 import { useProfiles } from './hooks/useProfiles'
@@ -130,16 +132,22 @@ export default function App() {
   })
 
   // Auto-speak fires on the transition, not on every render: the turn ending is
-  // the only moment there is new text to read.
+  // the only moment there is new text to read. The same transition is when a
+  // page becomes a page — a fence is half-written while it streams.
   const wasStreaming = useRef(false)
   const latest = useRef({ speech, messages: h.messages, autoSpeak: prefs.autoSpeak })
   latest.current = { speech, messages: h.messages, autoSpeak: prefs.autoSpeak }
   useEffect(() => {
     const ended = wasStreaming.current && !h.streaming
     wasStreaming.current = h.streaming
-    if (!ended || !latest.current.autoSpeak) return
+    if (!ended) return
     const last = latest.current.messages[latest.current.messages.length - 1]
-    if (last?.role === 'assistant' && last.content.trim()) latest.current.speech.toggle(last)
+    if (!last || last.role !== 'assistant') return
+    // Asking for a webpage and then having to hunt for a button is the wrong
+    // shape: the reply produced a page, so the page opens.
+    const doc = extractPreview(last.content)
+    if (doc) setPreview(doc)
+    if (latest.current.autoSpeak && last.content.trim()) latest.current.speech.toggle(last)
   }, [h.streaming])
   const toolMode = h.activeConversation?.tools ?? 'default'
   const effortMode = h.activeConversation?.effort ?? 'default'
@@ -148,6 +156,9 @@ export default function App() {
   const [showSystem, setShowSystem] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogName | null>(null)
+  // The page a reply produced. Held here rather than in Chat so the panel
+  // survives a re-render of the transcript.
+  const [preview, setPreview] = useState<PreviewDoc | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [messageCount, setMessageCount] = useState(0)
@@ -168,6 +179,12 @@ export default function App() {
       ? `${h.activeConversation.title} — Hearth`
       : 'Hearth'
   }, [h.activeConversation?.title])
+
+  // A page belongs to the reply that produced it, so switching conversations
+  // closes it rather than leaving someone else's page on screen.
+  useEffect(() => {
+    setPreview(null)
+  }, [h.activeId])
 
   // The count is shown in Settings and in the clear dialog, so both refresh it.
   useEffect(() => {
@@ -338,7 +355,7 @@ export default function App() {
       <div
         className={`app-body${prefs.layout === 'tabs' ? ' tabs' : ''}${
           prefs.layout === 'sidebar' && prefs.sidebarCollapsible && prefs.sidebarCollapsed ? ' collapsed' : ''
-        }`}
+        }${preview ? ' with-preview' : ''}`}
       >
         {prefs.layout === 'sidebar' && (
         <Sidebar
@@ -502,6 +519,7 @@ export default function App() {
             user={user}
             onRegenerate={h.regenerate}
             onEdit={h.editLast}
+            onPreview={(doc) => setPreview(doc)}
           />
 
           {h.error && <div className="error">{h.error}</div>}
@@ -520,6 +538,15 @@ export default function App() {
             onStop={h.stop}
           />
         </main>
+
+        {preview && (
+          <PreviewPanel
+            doc={preview}
+            width={prefs.previewWidth}
+            onWidth={(width) => updatePrefs({ previewWidth: width })}
+            onClose={() => setPreview(null)}
+          />
+        )}
       </div>
 
       <Palette

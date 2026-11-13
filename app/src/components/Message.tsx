@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import Markdown from './Markdown'
 import Avatar from './Avatar'
+import { extractPreview, type PreviewDoc } from '../lib/preview'
 import type { Message as Msg } from '../lib/db'
 
 type Props = {
@@ -19,6 +20,8 @@ type Props = {
   pendingMemoryIds?: Set<string>
   onKeepMemory?: (id: string) => void
   onForgetMemory?: (id: string) => void
+  /** Open this reply's page in the preview panel. */
+  onPreview?: (doc: PreviewDoc) => void
 }
 
 function stamp(ts: number): string {
@@ -42,6 +45,7 @@ function MessageView({
   pendingMemoryIds,
   onKeepMemory,
   onForgetMemory,
+  onPreview,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -60,6 +64,9 @@ function MessageView({
   }, [message.content])
   const empty = !message.content && !message.reasoning && !message.attachments?.length
   const isUser = message.role === 'user'
+  // Only a settled reply is a page: while it streams the fence is half-written,
+  // and a half-written document is a blank panel that flickers.
+  const page = !isUser && !streaming && message.content ? extractPreview(message.content) : null
 
   function startEdit() {
     setDraft(message.content)
@@ -178,6 +185,11 @@ function MessageView({
             {message.content && (
               <button className="link" onClick={() => void navigator.clipboard.writeText(message.content)}>
                 copy
+              </button>
+            )}
+            {page && (
+              <button className="link" onClick={() => onPreview?.(page)} title="Open this page beside the chat">
+                preview
               </button>
             )}
             {isUser && isLastUser && !streaming && (

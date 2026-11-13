@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import Message from './Message'
+import type { PreviewDoc } from '../lib/preview'
 import type { Message as Msg } from '../lib/db'
 
 type Props = {
@@ -15,6 +16,7 @@ type Props = {
   pendingMemoryIds?: Set<string>
   onKeepMemory?: (id: string) => void
   onForgetMemory?: (id: string) => void
+  onPreview?: (doc: PreviewDoc) => void
 }
 
 export default function Chat({
@@ -29,6 +31,7 @@ export default function Chat({
   pendingMemoryIds,
   onKeepMemory,
   onForgetMemory,
+  onPreview,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -76,6 +79,7 @@ export default function Chat({
             pendingMemoryIds={pendingMemoryIds}
             onKeepMemory={onKeepMemory}
             onForgetMemory={onForgetMemory}
+            onPreview={onPreview}
             speech={
               speech
                 ? {

@@ -1521,3 +1521,98 @@ pre.log {
 .hljs-variable, .hljs-template-variable, .hljs-params { color: var(--text); }
 .hljs-meta, .hljs-doctag { color: var(--muted); }
 .hljs-deletion { color: var(--danger); }
+
+/* ---------- page preview (v1.39) ---------- */
+
+/* The panel is a third grid column, and its own width drives that column: the
+   drag handle lives in the panel, so the panel is the thing that knows. */
+.app-body.with-preview { grid-template-columns: 232px minmax(0, 1fr) auto; }
+.app-body.collapsed.with-preview { grid-template-columns: 56px minmax(0, 1fr) auto; }
+.app-body.tabs.with-preview { grid-template-columns: minmax(0, 1fr) auto; }
+
+.preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: none;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* A hairline that is easy to grab: 1px of border, 6px of hit area. */
+.preview-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--space-3);
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.preview-grip:hover { background: var(--accent); opacity: 0.35; }
+
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  min-height: var(--control-h);
+}
+
+.preview-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.preview-actions {
+  display: flex;
+  gap: var(--space-4);
+  flex: none;
+}
+
+.preview-note {
+  margin: 0;
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* The frame is the sandbox. Nothing here styles its contents — it has its own
+   origin and its own document, and that is the point. */
+.preview-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--field);
+}
+
+/* Below this width there is no room for three columns: the chat would be
+   squeezed to a sliver. The panel overlays the chat instead, which is the same
+   trade a drawer makes — the page is what you asked to see. */
+@media (max-width: 900px) {
+  .app-body { position: relative; }
+  .app-body.with-preview { grid-template-columns: 232px minmax(0, 1fr); }
+  .app-body.collapsed.with-preview { grid-template-columns: 56px minmax(0, 1fr); }
+  .app-body.tabs.with-preview { grid-template-columns: minmax(0, 1fr); }
+  .preview {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    box-shadow: calc(-1 * var(--space-4)) 0 var(--space-10) var(--scrim);
+  }
+}

