@@ -7,6 +7,7 @@ import { listModels, type ModelInfo } from '../lib/models'
 import { agentTurn, type TurnDriver } from '../lib/turn'
 import { NO_TOOLS, runTool as executeTool, toolGuidance, type ToolPolicy } from '../lib/tools'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
+import { currentDateBlock } from '../lib/clock'
 import { suggestTitle } from '../lib/title'
 import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
 import { toDataUrl, type Attachment } from '../lib/attachments'
@@ -161,6 +162,11 @@ export function useHearth(
     const memory = buildMemoryBlock(stored, conv.id, conv.characterId ?? null)
     // Tools are on for every turn, so the guidance is always relevant.
     const system = [
+      // First, because it frames everything after it — who you are, who the
+      // model is, what this chat is about all sit inside a particular day. A
+      // conversation that wants a different one (roleplay in another era) can
+      // say so in its own prompt, which comes later and wins by position.
+      currentDateBlock(),
       profile,
       character,
       buildSummaryBlock(summary),
