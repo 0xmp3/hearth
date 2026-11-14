@@ -5,6 +5,7 @@
 // "fall back to the build that runs anywhere".
 
 import { execFile } from 'node:child_process'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -33,11 +34,24 @@ function rank(gpu) {
   return 1
 }
 
+// Resolved by absolute path rather than PATH: `spawn('powershell')` runs whatever
+// a planted powershell.exe earlier in PATH happens to be, with the user's token.
+const POWERSHELL =
+  process.platform === 'win32'
+    ? join(
+        process.env.SystemRoot ?? 'C:\\Windows',
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe',
+      )
+    : 'powershell'
+
 async function gpuNames() {
   try {
     if (process.platform === 'win32') {
       const { stdout } = await run(
-        'powershell',
+        POWERSHELL,
         [
           '-NoProfile',
           '-NonInteractive',
@@ -58,6 +72,9 @@ async function gpuNames() {
     }
 
     // Linux: lspci is the common case, /sys is the fallback when it is absent.
+    // This is the only shell in the repo — `sh -c` with a constant string and no
+    // interpolation. Everything else is an argv array; do not copy this unless
+    // the string is a literal.
     const { stdout } = await run(
       'sh',
       ['-c', "lspci 2>/dev/null | grep -iE 'vga|3d|display' || true"],

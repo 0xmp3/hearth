@@ -19,6 +19,30 @@ function clamp(width: number): number {
 }
 
 /**
+ * What the panel puts in the frame in place of a page that tried to leave.
+ *
+ * No scripts, no sandbox allowance: the point is that the document that moved is
+ * gone. It is a document for someone else's page, so it follows the OS colour
+ * scheme rather than Hearth's theme, exactly like the wrapper in lib/preview.ts.
+ */
+const BLOCKED_DOC = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<style>
+:root { color-scheme: light dark; }
+html, body { margin: 0; }
+body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 24px; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+p { margin: 0; opacity: 0.75; }
+</style></head>
+<body>
+<h1>This page tried to load another address.</h1>
+<p>The preview stopped it and reset the panel. Nothing was read from this app.</p>
+</body>
+</html>`
+
+/**
  * The page a reply produced, beside the chat.
  *
  * The iframe is the whole security story and it is deliberately the smallest
@@ -36,6 +60,15 @@ function clamp(width: number): number {
  * The CSP inside the document (lib/preview.ts) removes the network. Neither
  * layer is sufficient alone: the sandbox stops origin access, the CSP stops
  * exfiltration, and a page that beats one still meets the other.
+ *
+ * There is one channel neither layer closes: **the page can navigate itself.**
+ * `navigate-to` was never shipped by any browser, and a `<meta refresh>` is not
+ * governed by a CSP directive at all, so `location = 'https://host/?d=…'` leaves
+ * the frame and the request is made. That cannot be prevented here, so it is
+ * detected: the iframe's `load` event fires again when the document moves, and a
+ * second load means the page we vetted is no longer the page in the frame. The
+ * frame is then replaced with a static notice — not re-run, because a page that
+ * navigates would do it again on every reload.
  */
 export default function PreviewPanel({ doc, width, onWidth, onClose }: Props) {
   // Remounting the iframe is the only reliable reload: a sandboxed document
@@ -43,6 +76,9 @@ export default function PreviewPanel({ doc, width, onWidth, onClose }: Props) {
   // document alive.
   const [nonce, setNonce] = useState(0)
   const [copied, setCopied] = useState(false)
+  // True when the page left the document we handed it; the frame then holds the
+  // static notice instead of the reply's page.
+  const [left, setLeft] = useState(false)
   // The drag is local and only committed on release: writing a preference on
   // every pointermove is a localStorage write per frame.
   const [w, setW] = useState(() => clamp(width))
@@ -51,6 +87,29 @@ export default function PreviewPanel({ doc, width, onWidth, onClose }: Props) {
   // still the pre-drag value and the drag silently failed to persist.
   const live = useRef(w)
   const drag = useRef<{ startX: number; startWidth: number } | null>(null)
+  // Loads since this element was created. The first is our own document.
+  const loads = useRef(0)
+
+  const frameLoad = useCallback(() => {
+    loads.current += 1
+    if (loads.current === 1) return
+    // Second load: the document moved — a navigation, or a reload of itself.
+    // Either way it is no longer the page we vetted, so it is replaced.
+    loads.current = 0
+    setLeft(true)
+  }, [])
+
+  const runAgain = useCallback(() => {
+    loads.current = 0
+    setLeft(false)
+    setNonce((n) => n + 1)
+  }, [])
+
+  // A new page means a fresh count: the srcDoc change is itself a load.
+  useEffect(() => {
+    loads.current = 0
+    setLeft(false)
+  }, [doc.html])
 
   const resize = useCallback((next: number) => {
     const value = clamp(next)
@@ -131,6 +190,15 @@ export default function PreviewPanel({ doc, width, onWidth, onClose }: Props) {
         </div>
       </header>
 
+      {left && (
+        <p className="preview-note preview-note-nav">
+          This page tried to load another address, so the preview stopped it and reset the frame.{' '}
+          <button className="link" onClick={runAgain}>
+            run it again
+          </button>
+        </p>
+      )}
+
       {doc.external.length > 0 && (
         <p className="preview-note">
           This page asks for {doc.external.join(', ')} — external assets are blocked, so it may
@@ -139,12 +207,16 @@ export default function PreviewPanel({ doc, width, onWidth, onClose }: Props) {
       )}
 
       <iframe
-        key={nonce}
+        key={left ? 'blocked' : nonce}
         className="preview-frame"
         title={doc.title}
+        // Never allow-same-origin. The blocked document gets the same allowance
+        // because it carries no script at all — changing the attribute per state
+        // would only make the sandbox harder to read from outside.
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
-        srcDoc={doc.html}
+        srcDoc={left ? BLOCKED_DOC : doc.html}
+        onLoad={frameLoad}
       />
     </aside>
   )

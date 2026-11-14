@@ -56,8 +56,17 @@ function startGpu() {
   if (gpuProcess || process.platform !== 'win32') return
 
   gpuError = null
+  // Absolute, because a `powershell.exe` earlier in PATH is whatever that file
+  // happens to be, running with this process's token.
+  const powershell = join(
+    process.env.SystemRoot ?? 'C:\\Windows',
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  )
   gpuProcess = spawn(
-    'powershell',
+    powershell,
     [
       '-NoProfile',
       '-NonInteractive',

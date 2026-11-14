@@ -116,6 +116,18 @@ body {
 img, svg, canvas, video { max-width: 100%; height: auto; }
 `
 
+/**
+ * Navigation the document declares itself, removed at assembly.
+ *
+ * `<meta http-equiv="refresh">` is not governed by any CSP directive, so the one
+ * form of it we can delete is the form we are handed. Script-driven navigation is
+ * left to the panel's load-event check, because nothing at this layer can
+ * intercept `location = …` either.
+ */
+function stripMetaRefresh(html: string): string {
+  return html.replace(/<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '')
+}
+
 function cspMeta(): string {
   return `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`
 }
@@ -191,8 +203,9 @@ export function extractPreview(text: string): PreviewDoc | null {
     .join('\n;\n')
 
   // The first html block is the page. A second one is a second example, and
-  // merging two documents produces neither.
-  const base = htmlBlocks[0].body
+  // merging two documents produces neither. Any refresh the document declares is
+  // stripped here — it is the one navigation form we can remove rather than watch.
+  const base = stripMetaRefresh(htmlBlocks[0].body)
   const full = /<html[\s>]/i.test(base)
   const html = full ? assemble(base, css, js) : wrap(base, css, js)
 

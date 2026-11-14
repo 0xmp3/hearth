@@ -16,6 +16,13 @@ import { join } from 'node:path'
 
 export const BIN = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server'
 
+/**
+ * Written by the installer after a complete, verified extract. A managed build is
+ * only "installed" when this exists — a truncated .exe from a killed extract is
+ * not, and used to pass for one.
+ */
+export const MARKER = '.installed.json'
+
 const DEFAULTS = {
   enginePath: null,
   modelsDir: null,
@@ -28,6 +35,10 @@ const DEFAULTS = {
   // Egress is off until the user says otherwise, and it is the manager that
   // enforces it: the app asks, the manager decides.
   network: false,
+  // The backend proxy only accepts a loopback address. Turn this on to allow a
+  // backend on another machine (a test VM, a box on the LAN) — and understand
+  // that it hands the app a general POST primitive to that host.
+  allowRemoteBackend: false,
 }
 
 export function configPath(dataDir) {
@@ -64,6 +75,10 @@ export function resolveEngine(dataDir) {
   }
 
   const managed = join(dataDir, 'engine', BIN)
+  // Resolving a path and *claiming* an install are different questions. The
+  // marker (see MARKER) is what the engine panel reports as installed; an
+  // existing binary must still resolve, because everyone who installed before
+  // v1.44 has one and would otherwise lose their engine on upgrade.
   if (existsSync(managed)) return { path: managed, source: 'managed', exists: true }
 
   return { path: null, source: 'none', exists: false }

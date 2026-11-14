@@ -5,16 +5,19 @@
 
 import { createWriteStream } from 'node:fs'
 import { existsSync } from 'node:fs'
-import { mkdir, rm, stat } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 
+import { MARKER } from './resolve.mjs'
+
 const run = promisify(execFile)
 
 const LEMONADE_API = 'https://api.github.com/repos/lemonade-sdk/llamacpp-rocm/releases/latest'
 const OFFICIAL_BASE = 'https://github.com/ggml-org/llama.cpp/releases/download'
+const OFFICIAL_API = 'https://api.github.com/repos/ggml-org/llama.cpp/releases/tags'
 
 /** Live progress, polled by the UI. One install at a time. */
 export const progress = {
@@ -78,11 +81,30 @@ export async function resolveAsset(source) {
   const tag = source.asset.match(/llama-(b\d+)/)?.[1]
   if (!tag) throw new Error(`cannot read a release tag from ${source.asset}`)
 
+  // ggml-org publishes no checksums.txt, but GitHub publishes a sha256 digest
+  // per release asset, so the pair is anchored on the same thing lemonade's is:
+  // the release itself. A catalog entry may still pin its own hash and win.
+  let size = null
+  let sha256 = source.sha256 ?? null
+  try {
+    const release = await ghJson(`${OFFICIAL_API}/${tag}`)
+    const asset = release.assets?.find((a) => a.name === source.asset)
+    if (asset) {
+      size = asset.size ?? null
+      const digest = String(asset.digest ?? '')
+      if (digest.startsWith('sha256:')) sha256 = digest.slice('sha256:'.length)
+    }
+  } catch (err) {
+    // Without a pinned hash this is fatal: install() refuses an unverified
+    // download, and failing here says why.
+    if (!sha256) throw new Error(`could not read the ${tag} release metadata: ${err.message}`)
+  }
+
   return {
     url: `${OFFICIAL_BASE}/${tag}/${source.asset}`,
     filename: source.asset,
-    size: null,
-    sha256: source.sha256 ?? null,
+    size,
+    sha256,
     version: tag,
   }
 }
@@ -121,9 +143,15 @@ async function extract(archive, dest) {
 /**
  * Download and install a build into `dest`. Resolves when the binary is in
  * place. Throws on any failure, leaving `progress.phase = 'error'`.
+ *
+ * An unverified download is **refused**, not warned about: this function's whole
+ * job is to put an executable on the user's disk, so "we could not check it" has
+ * to be a stop. A build with no digest anywhere is a bug in the catalog, not a
+ * reason to run an unverified binary.
  */
 export async function install(source, dest) {
   reset()
+  let archive = null
   try {
     progress.phase = 'resolving'
     const asset = await resolveAsset(source)
@@ -131,8 +159,14 @@ export async function install(source, dest) {
     progress.filename = asset.filename
     progress.total = asset.size ?? 0
 
+    if (!asset.sha256) {
+      throw new Error(
+        `no checksum is available for ${asset.filename} — refusing to unpack an unverified build`,
+      )
+    }
+
     await mkdir(dest, { recursive: true })
-    const archive = join(dest, asset.filename)
+    archive = join(dest, asset.filename)
 
     progress.phase = 'downloading'
     const actual = await download(asset.url, archive, (got, total) => {
@@ -141,19 +175,30 @@ export async function install(source, dest) {
     })
 
     progress.phase = 'verifying'
-    if (asset.sha256) {
-      if (actual !== asset.sha256) {
-        throw new Error(`checksum mismatch: expected ${asset.sha256}, got ${actual}`)
-      }
-      progress.verified = true
-    } else {
-      // No published hash for this asset. Say so rather than implying safety.
-      progress.verified = false
+    if (actual !== asset.sha256) {
+      throw new Error(`checksum mismatch: expected ${asset.sha256}, got ${actual}`)
     }
+    progress.verified = true
 
     progress.phase = 'extracting'
     await extract(archive, dest)
-    await rm(archive, { force: true })
+
+    // Written only after a complete extract, so a half-unpacked binary can never
+    // pass for an installed one — isInstalled() reads this, not the .exe.
+    await writeFile(
+      join(dest, MARKER),
+      JSON.stringify(
+        {
+          version: asset.version,
+          filename: asset.filename,
+          sha256: asset.sha256,
+          installedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ) + '\n',
+      'utf8',
+    )
 
     progress.phase = 'done'
     return { version: asset.version, verified: progress.verified, dir: dest }
@@ -161,13 +206,46 @@ export async function install(source, dest) {
     progress.phase = 'error'
     progress.error = err.message
     throw err
+  } finally {
+    // The archive is hundreds of MB and has no use after unpacking — including
+    // after a failure, which used to leave it behind.
+    if (archive) await rm(archive, { force: true }).catch(() => {})
   }
 }
 
+/** The install is only real once this exists; `binary()` alone is not proof. */
 export async function isInstalled(dest, bin) {
   try {
+    const marker = JSON.parse(await readFile(join(dest, MARKER), 'utf8'))
+    // `adopted` marks a build that was already on disk when the marker arrived —
+    // it was installed by an earlier version, so it has no recorded hash.
+    if (!marker?.sha256 && marker?.adopted !== true) return false
     const s = await stat(join(dest, bin))
-    return s.isFile()
+    return s.isFile() && s.size > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A build installed before this version has no marker, and must not read as
+ * missing — it would offer the user a re-download over a working engine. Adopt it
+ * once, recording that it was adopted rather than verified.
+ */
+export async function adoptLegacy(dest, bin) {
+  const marker = join(dest, MARKER)
+  if (existsSync(marker)) return false
+  const target = join(dest, bin)
+  if (!existsSync(target)) return false
+  try {
+    const s = await stat(target)
+    if (!s.isFile() || s.size === 0) return false
+    await writeFile(
+      marker,
+      JSON.stringify({ adopted: true, note: 'installed before v1.44, no recorded checksum', adoptedAt: new Date().toISOString() }, null, 2) + '\n',
+      'utf8',
+    )
+    return true
   } catch {
     return false
   }

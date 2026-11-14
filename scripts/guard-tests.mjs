@@ -11,7 +11,8 @@
 // Exits non-zero if any expectation fails, so it can gate a release.
 
 import { mkdir, writeFile, rm, symlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { join, resolve, sep } from 'node:path'
 import { request } from 'node:http'
 
 const arg = (name, fallback) => {
@@ -24,6 +25,24 @@ const MANAGER = arg('manager', 'http://127.0.0.1:8090')
 // Probing a real system file is only fair in a throwaway guest. On a working
 // machine the fixture's own escapes prove the same thing.
 const SYSTEM_PATHS = process.argv.includes('--system-paths')
+
+/**
+ * The fixture is built by deleting the root first, so a mistyped `--root` is a
+ * deleted folder. Refuse anything that does not look disposable: this suite gets
+ * run by people who did not write it, and one `--root .` is all it takes.
+ */
+function assertDisposable(path) {
+  const norm = resolve(path)
+  const tmp = resolve(tmpdir())
+  const inTemp = norm !== tmp && norm.startsWith(tmp + sep)
+  if (!inTemp && !/hearth-guard(-test)?$/i.test(norm)) {
+    throw new Error(
+      `refusing to use ${norm} as a test root — it is deleted before the fixture is built.\n` +
+        `  Use a folder named "hearth-guard" (default: ${process.platform === 'win32' ? 'C:/hearth-guard' : '/tmp/hearth-guard'}), or one under ${tmp}.`,
+    )
+  }
+  return norm
+}
 
 let failures = 0
 let passes = 0
@@ -98,14 +117,31 @@ async function buildFixture() {
   } catch {
     symlinked = false
   }
-  return { root, symlinked }
+  // A *directory* junction out of the root. Junctions need no elevation on
+  // Windows, so unlike the symlink above this case always runs — and it is the
+  // one that matters: the walk has to not follow it, and a read through it has
+  // to be refused after the realpath.
+  let junctioned = false
+  try {
+    await mkdir(join(ROOT, 'outside-dir'), { recursive: true })
+    await writeFile(join(ROOT, 'outside-dir', 'secret.txt'), 'junction escape must never be readable\n', 'utf8')
+    await symlink(join(ROOT, 'outside-dir'), join(root, 'junction-out'), 'junction')
+    junctioned = true
+  } catch {
+    junctioned = false
+  }
+  // A unicode filename with spaces: the guard compares resolved paths, and
+  // encoding is exactly where a naive check stops matching.
+  await writeFile(join(root, 'spaced ünicode file.txt'), 'unicode content here\n', 'utf8')
+  return { root, symlinked, junctioned }
 }
 
 async function main() {
+  assertDisposable(ROOT)
   console.log(`Hearth workspace guard tests\n  manager: ${MANAGER}\n  fixture: ${ROOT}\n`)
   // Where the machine's workspace pointed before this ran, so it can be put back.
   const before = await call('/api/workspace', undefined, 'GET').then((r) => r.body)
-  const { root, symlinked } = await buildFixture()
+  const { root, symlinked, junctioned } = await buildFixture()
 
   try {
   const opened = await call('/api/workspace', { path: root, enabled: true })
@@ -145,6 +181,52 @@ async function main() {
   } else {
     console.log('  SKIP  symlink escape (this OS would not create the link)')
   }
+
+  if (junctioned) {
+    // All three tools, because each resolves the path a different way: read
+    // realpaths the leaf, list and search realpath the directory.
+    const viaJunction = await call('/api/workspace/read', { path: 'junction-out/secret.txt' })
+    check(
+      'refuses a read through a directory junction out of the root',
+      viaJunction.status === 400 && /outside the workspace/.test(viaJunction.body.error ?? ''),
+      JSON.stringify(viaJunction.body),
+    )
+    const listJunction = await call('/api/workspace/list', { path: 'junction-out' })
+    check(
+      'refuses a listing through a directory junction out of the root',
+      listJunction.status === 400 && /outside the workspace/.test(listJunction.body.error ?? ''),
+      JSON.stringify(listJunction.body),
+    )
+    const searchJunction = await call('/api/workspace/search', { query: 'junction escape', path: 'junction-out' })
+    check(
+      'refuses a search through a directory junction out of the root',
+      searchJunction.status === 400 && /outside the workspace/.test(searchJunction.body.error ?? ''),
+      JSON.stringify(searchJunction.body),
+    )
+    // The root listing may show the name — that is not a leak — but a search
+    // from the root must not reach through it either.
+    const rootSearch = await call('/api/workspace/search', { query: 'junction escape', path: '.' })
+    check(
+      'does not see through a junction when searched from the root',
+      rootSearch.status === 200 && (rootSearch.body.hits?.length ?? 0) === 0,
+      JSON.stringify(rootSearch.body).slice(0, 200),
+    )
+  } else {
+    console.log('  SKIP  junction escape (could not create a junction)')
+  }
+
+  const uni = await call('/api/workspace/read', { path: 'spaced ünicode file.txt' })
+  check(
+    'reads a unicode filename containing spaces',
+    uni.status === 200 && (uni.body.text ?? '').includes('unicode content here'),
+    JSON.stringify(uni.body).slice(0, 200),
+  )
+  const uniSearch = await call('/api/workspace/search', { query: 'unicode content here' })
+  check(
+    'finds text in a unicode-named file',
+    uniSearch.status === 200 && (uniSearch.body.hits?.length ?? 0) > 0,
+    JSON.stringify(uniSearch.body).slice(0, 200),
+  )
 
   const search = await call('/api/workspace/search', { query: 'nested', limit: 5 })
   check('finds text inside the root', search.status === 200 && (search.body.hits?.length ?? 0) > 0)

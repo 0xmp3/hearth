@@ -45,8 +45,10 @@ export function buildPreset(modelsDir, presetPath, { ctx, ngl } = {}) {
       lines.push(`mmproj = ${p(join(modelsDir, projector))}`)
       withVision.push(name)
     }
-    if (ctx) lines.push(`c = ${ctx}`)
-    if (ngl != null) lines.push(`n-gpu-layers = ${ngl}`)
+    // Numbers only, checked here as well as at the route: this file decides which
+    // model loads, and a string carrying a newline would add keys of its choosing.
+    if (Number.isInteger(ctx) && ctx > 0) lines.push(`c = ${ctx}`)
+    if (Number.isInteger(ngl)) lines.push(`n-gpu-layers = ${ngl}`)
     lines.push('jinja = true')
 
     sections.push(lines.join('\n'))

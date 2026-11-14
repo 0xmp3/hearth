@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Dialog from './Dialog'
 import { BUDGET_STOPS, formatTokens, nearestStopIndex } from '../lib/budget'
 import BackendPanel from './BackendPanel'
@@ -102,7 +102,26 @@ export default function SettingsDialog({
 }: Props) {
   const [backendUrl, setBackendUrlDraft] = useState(baseUrl)
   const [bindHost, setBindHost] = useState('')
+  const [allowRemoteBackend, setAllowRemoteBackend] = useState(false)
   const [backendNote, setBackendNote] = useState<string | null>(null)
+
+  // The switch has to reflect what the manager actually has, not a default: a
+  // checkbox that reads "off" while the manager allows it is a lie in the one
+  // place someone would look to check.
+  useEffect(() => {
+    let alive = true
+    manager
+      .engine()
+      .then((state) => {
+        if (!alive) return
+        const cfg = state.config as { allowRemoteBackend?: boolean }
+        setAllowRemoteBackend(cfg.allowRemoteBackend === true)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
   const [wsPath, setWsPath] = useState(workspace.path)
   const [wsCheck, setWsCheck] = useState<string | null>(null)
   const [wsChecking, setWsChecking] = useState(false)
@@ -310,6 +329,37 @@ export default function SettingsDialog({
             what llama-server listens on. Loopback by default; <code>0.0.0.0</code> exposes it to
             anything that can reach this machine, so scope a firewall rule to the one subnet that
             needs it.
+          </em>
+        </label>
+
+        <label className="field">
+          <span>Backend on another machine</span>
+          <div className="row">
+            <input
+              type="checkbox"
+              checked={allowRemoteBackend}
+              onChange={async (e) => {
+                const next = e.target.checked
+                setAllowRemoteBackend(next)
+                try {
+                  await manager.saveConfig({ allowRemoteBackend: next } as never)
+                  setBackendNote(
+                    next
+                      ? 'saved — the manager will now proxy to a backend that is not on this machine'
+                      : 'saved — the manager only proxies to a loopback backend again',
+                  )
+                } catch (err) {
+                  setAllowRemoteBackend(!next)
+                  setBackendNote((err as Error).message)
+                }
+              }}
+            />{' '}
+            allow an endpoint that is not loopback
+          </div>
+          <em className="hint">
+            the manager proxies the app's chat and model requests, so it only forwards to a
+            loopback address by default. Turn this on to point the endpoint above at another
+            machine — the manager will then accept any address there, which is why it is off.
           </em>
         </label>
         <p className="hint">

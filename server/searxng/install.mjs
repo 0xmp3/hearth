@@ -119,9 +119,11 @@ function alive(pid) {
 }
 
 function runningPid(dataDir) {
-  if (child?.pid) return child.pid
-  const pid = readPid(dataDir)
-  return pid && alive(pid) ? pid : null
+  // Only ever a process this manager spawned. The pidfile stays as bookkeeping
+  // for the UI, but nothing is signalled from it: a pid read off disk can be
+  // stale, Windows reuses pids, and killing a stranger's process is a worse
+  // failure than an orphaned server.
+  return child?.pid ?? null
 }
 
 export function paths(dataDir) {
@@ -357,10 +359,15 @@ export async function install(dataDir) {
 export function status(dataDir) {
   const p = paths(dataDir)
   const pid = runningPid(dataDir)
+  // A pid on disk that is not one of ours. Reported so the UI can say why the
+  // port is busy; never signalled.
+  const filePid = readPid(dataDir)
+  const unattributed = !pid && filePid && alive(filePid) ? filePid : null
   return {
     installed: existsSync(p.marker),
     running: Boolean(pid),
     pid,
+    unattributed,
     startedAt,
     url: `http://${HOST}:${PORT}`,
     port: PORT,
@@ -389,6 +396,14 @@ async function healthy(timeoutMs = 30000) {
 export async function start(dataDir) {
   if (runningPid(dataDir)) return status(dataDir)
   if (!(await isInstalled(dataDir))) throw new Error('SearXNG is not installed')
+
+  // An instance from a previous manager may still be answering — we will not
+  // signal a process we did not spawn, so adopt the port instead of fighting it
+  // for the bind and failing with a confusing "did not answer in 30 seconds".
+  if (await healthy(1500)) {
+    push(`[searxng] something is already answering on ${HOST}:${PORT} — not starting a second one`)
+    return { ...status(dataDir), running: true, adopted: true }
+  }
   clearPid(dataDir)
 
   const p = paths(dataDir)

@@ -62,7 +62,14 @@ export type EngineStatus = {
   source: EngineSource | null
   engine: Resolved
   models: Resolved
-  config: { enginePath: string | null; modelsDir: string | null; ctx: number; ngl: number }
+  config: {
+    enginePath: string | null
+    modelsDir: string | null
+    ctx: number
+    ngl: number
+    bindHost?: string
+    allowRemoteBackend?: boolean
+  }
   managed: { dir: string; installed: boolean }
   progress: InstallProgress
   installing: boolean

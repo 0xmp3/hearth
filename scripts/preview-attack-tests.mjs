@@ -112,18 +112,24 @@ async function main() {
   // The spy is the witness the fixture cannot fake. It has no origin check, no
   // header gate and no CORS policy — so if a request arrives here, the sandbox
   // and the CSP both failed, and nothing else can be blamed.
+  //
+  // It answers `200` with a body rather than `204`: a navigation that gets no
+  // content never commits a document, so the frame's `load` event would never
+  // fire and the panel's detection would be untested. A real page that a preview
+  // navigates to returns HTML, so this is also the honest shape.
   const spyHits = []
   const spy = createServer((req, res) => {
     spyHits.push(`${req.method} ${req.url}`)
     // Permissive CORS on purpose: without it a successful fetch would still
     // reject client-side for lack of the header, and a "blocked" verdict would
     // be a CORS artefact rather than evidence about the sandbox.
-    res.writeHead(204, {
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': '*',
       'Access-Control-Allow-Methods': '*',
     })
-    res.end()
+    res.end('<!doctype html><title>spy</title><p>you should never see this</p>')
   })
   spy.on('upgrade', (req, socket) => {
     spyHits.push(`UPGRADE ${req.url}`)
@@ -228,6 +234,20 @@ async function main() {
 
     await page.waitForSelector('iframe.preview-frame', { timeout: 15000 })
 
+    // Read the frame's structure *now*, before the fixture's navigation fires and
+    // the panel replaces the document. Everything asserted here is about the page
+    // the reply produced, not about the notice that replaces it later.
+    const initial = await page.evaluate(() => {
+      const f = document.querySelector('iframe.preview-frame')
+      const srcdoc = f?.getAttribute('srcdoc') ?? ''
+      return {
+        sandbox: f?.getAttribute('sandbox') ?? '',
+        srcdocLength: srcdoc.length,
+        hasCsp: srcdoc.includes("connect-src 'none'"),
+        hasCspFirst: /<head>\s*<meta[^>]+Content-Security-Policy/i.test(srcdoc),
+      }
+    })
+
     // Give every channel attempt its timeout to expire.
     await new Promise((r) => setTimeout(r, 4000))
 
@@ -257,11 +277,12 @@ async function main() {
       }
     })
 
-    check('panel rendered an iframe', frame.srcdocLength > 500, `${frame.srcdocLength} chars`)
-    check('sandbox is exactly allow-scripts', frame.sandbox === 'allow-scripts', `got "${frame.sandbox}"`)
-    check('sandbox does not allow same-origin', !/allow-same-origin/.test(frame.sandbox))
-    check('sandbox allows no popups, forms or top navigation', !/allow-(popups|forms|top-navigation|modals)/.test(frame.sandbox))
-    check('the document carries the preview CSP', frame.hasCsp)
+    check('panel rendered an iframe', initial.srcdocLength > 500, `${initial.srcdocLength} chars`)
+    check('sandbox is exactly allow-scripts', initial.sandbox === 'allow-scripts', `got "${initial.sandbox}"`)
+    check('sandbox does not allow same-origin', !/allow-same-origin/.test(initial.sandbox))
+    check('sandbox allows no popups, forms or top navigation', !/allow-(popups|forms|top-navigation|modals)/.test(initial.sandbox))
+    check('the document carries the preview CSP', initial.hasCsp)
+    check('the CSP is the first thing in the head', initial.hasCspFirst)
     check(
       'the frame is cross-origin: contentDocument is null',
       frame.contents === 'null' || frame.contents.startsWith('threw'),
@@ -306,13 +327,67 @@ async function main() {
     }
 
     // ---- nothing left the frame -------------------------------------------
-    check('the spy heard nothing at all', spyHits.length === 0, spyHits.join(' | '))
+    //
+    // Everything above is *prevented*: the sandbox removes the origin, the CSP
+    // removes the network, and both are proved by the spy hearing nothing.
+    //
+    // Navigation is the exception, and the checks below are written to match.
+    // No CSP directive governs it — `navigate-to` was never shipped, and a meta
+    // refresh is not covered by any directive — so a page *can* make the frame
+    // issue a GET to a host it names, carrying data in the URL. That is not
+    // fixable at this layer; what is testable is that the panel notices, says so,
+    // and does not re-run the page that did it.
+    const navHits = spyHits.filter((h) => /leak=(nav|meta)/.test(h))
+    const otherHits = spyHits.filter((h) => !/leak=(nav|meta)/.test(h))
+    check('the spy heard nothing from any blocked channel', otherHits.length === 0, otherHits.join(' | '))
+
+    console.log(
+      navHits.length
+        ? `  KNOWN  self navigation reached the spy (${navHits.join(', ')}) — CSP cannot block it; the panel detects and resets`
+        : '  KNOWN  self navigation did not reach the spy this run — the panel may have reset the frame before it fired',
+    )
+
+    const notice = await page.evaluate(() => {
+      const el = document.querySelector('.preview-note-nav')
+      return el ? el.textContent.trim().slice(0, 160) : null
+    })
+    check('the panel reports that the page tried to load another address', Boolean(notice), String(notice))
+
+    const afterReset = await page.evaluate(() => {
+      const f = document.querySelector('iframe.preview-frame')
+      const doc = f?.getAttribute('srcdoc') ?? ''
+      return {
+        length: doc.length,
+        isBlockedDoc: doc.includes('tried to load another address'),
+        carriesFixture: doc.includes('hearthPreviewAttack') || doc.includes('__SPY__'),
+      }
+    })
+    check('the frame no longer holds the page that navigated', !afterReset.carriesFixture, `${afterReset.length} chars`)
+    check('the frame holds the static notice instead', afterReset.isBlockedDoc, `${afterReset.length} chars`)
+
+    const framesNow = page.frames().map((f) => f.url())
+    check(
+      'no frame ended up on a foreign URL',
+      !framesNow.some((u) => u.startsWith(SPY)),
+      framesNow.join(' | '),
+    )
+
+    // The reset must not restart the page: a page that navigates would navigate
+    // again on every reload, and a loop would be worse than the leak.
+    const hitsAtReset = spyHits.length
+    await new Promise((r) => setTimeout(r, 2500))
+    check(
+      'the reset did not re-run the page that navigated',
+      spyHits.length === hitsAtReset,
+      `${spyHits.length - hitsAtReset} further request(s): ${spyHits.slice(hitsAtReset).join(' | ')}`,
+    )
 
     const previewResponses = responses.filter((r) => r.preview)
+    const cspBlocked = previewResponses.filter((r) => !/leak=(nav|meta)/.test(r.url))
     check(
-      'no response reached the preview frame from any host',
-      previewResponses.length === 0,
-      previewResponses.map((r) => `${r.status} ${r.url}`).join(' | '),
+      'no response reached the preview frame from any host, apart from the navigation it made',
+      cspBlocked.length === 0,
+      cspBlocked.map((r) => `${r.status} ${r.url}`).join(' | '),
     )
     const managerHits = responses.filter((r) => r.url.startsWith(MANAGER) && r.preview)
     check(

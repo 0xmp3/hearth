@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
+import { isIP } from 'node:net'
 import { dirname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -22,7 +23,7 @@ import { serverView } from './metrics/server-view.mjs'
 import { buildPreset } from './engine/preset.mjs'
 import { detect } from './engine/detect.mjs'
 import { pickSource } from './engine/catalog.mjs'
-import { install, progress, isInstalled } from './engine/install.mjs'
+import { install, adoptLegacy, progress, isInstalled } from './engine/install.mjs'
 import { readUrl } from './net/fetch.mjs'
 import { webSearch } from './net/search.mjs'
 import * as searxng from './searxng/install.mjs'
@@ -204,6 +205,21 @@ function readBody(req, limit = 25e6) {
 // filename. Nothing from the client becomes a path.
 const SAFE_PATH = /^(avatars|attachments)\/[A-Za-z0-9._-]+$/
 
+/**
+ * A bounded whole number, or a refusal.
+ *
+ * `ctx` and `ngl` are written straight into the generated preset INI, so a
+ * string carrying a newline is not a bad number — it is extra lines in a config
+ * file that tells llama-server which GGUF to load.
+ */
+function wholeNumber(value, name, lo, hi) {
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < lo || n > hi) {
+    throw new Error(`${name} must be a whole number between ${lo} and ${hi}`)
+  }
+  return n
+}
+
 async function handleUpload(req, res, url) {
   const kind = url.searchParams.get('kind') === 'attachment' ? 'attachments' : 'avatars'
   const type = String(req.headers['content-type'] ?? '')
@@ -226,7 +242,14 @@ async function handleUpload(req, res, url) {
 }
 
 async function handleFile(res, url) {
-  const rel = decodeURIComponent(url.pathname.slice('/api/file/'.length))
+  let rel
+  try {
+    rel = decodeURIComponent(url.pathname.slice('/api/file/'.length))
+  } catch {
+    // A malformed escape (`%`, `%zz`) throws URIError. It used to escape the
+    // whole handler and take the process with it, unauthenticated, from an <img>.
+    return json(res, 400, { error: 'bad path' })
+  }
   if (!SAFE_PATH.test(rel)) return json(res, 400, { error: 'bad path' })
 
   const full = normalize(join(DATA, rel))
@@ -238,6 +261,9 @@ async function handleFile(res, url) {
     res.writeHead(200, {
       'Content-Type': MIME[ext] ?? 'application/octet-stream',
       'Content-Length': buf.length,
+      // The declared type is right, but nothing is gained by letting a browser
+      // decide for itself.
+      'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'max-age=31536000, immutable',
     })
     res.end(buf)
@@ -285,6 +311,11 @@ async function engineStatus() {
   const models = resolveModelsDir(DATA)
   const cfg = readConfig(DATA)
 
+  // A build from before the marker existed still counts as installed. Do this
+  // before reporting, so the panel never offers a re-download over a working
+  // engine.
+  await adoptLegacy(engineDir(DATA), BIN)
+
   return {
     detected,
     source,
@@ -312,9 +343,13 @@ const server = createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
 
   // Images are loaded by <img>, which cannot send custom headers, so the file
-  // endpoint is the one read-only route without the guard. It is path-checked.
+  // endpoint is the one read-only route without the guard. It is path-checked,
+  // and every line of the handler is inside a try: an unhandled throw from a
+  // `void`ed async call ends the process, which this route proved the hard way.
   if (req.method === 'GET' && url.pathname.startsWith('/api/file/')) {
-    void handleFile(res, url)
+    handleFile(res, url).catch((err) => {
+      json(res, 500, { error: err.message })
+    })
     return
   }
 
@@ -585,11 +620,32 @@ const server = createServer((req, res) => {
   //
   // This is also the seam where a backend that is not llama.cpp gets normalised:
   // one place to fix a shape, instead of one per engine.
+  //
+  // Loopback only, unless the user says otherwise. `baseUrl` arrives in a request
+  // body, so an unconstrained proxy here is a request-forgery primitive that also
+  // bypasses the `network` switch — the app could POST to a LAN address or a
+  // metadata endpoint with a body of its choosing. A backend on another machine
+  // (a test VM, say) is the reason the opt-in exists, and it is one setting.
+
+  const loopbackHost = (url) => {
+    const host = url.hostname.toLowerCase()
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]'
+  }
 
   const backendBase = (raw) => {
-    const url = new URL(String(raw || `http://127.0.0.1:${LLAMA_PORT}`))
+    let url
+    try {
+      url = new URL(String(raw || `http://127.0.0.1:${LLAMA_PORT}`))
+    } catch {
+      throw new Error('the backend address is not a URL')
+    }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new Error('the backend must be an http(s) address')
+    }
+    if (!loopbackHost(url) && readConfig(DATA).allowRemoteBackend !== true) {
+      throw new Error(
+        `refusing to proxy to ${url.hostname}: only a loopback backend is allowed unless "allowRemoteBackend" is turned on in Settings`,
+      )
     }
     return url.origin + url.pathname.replace(/\/+$/, '')
   }
@@ -828,10 +884,29 @@ const server = createServer((req, res) => {
     readBody(req, 1e5)
       .then((buf) => {
         const patch = buf.length ? JSON.parse(buf.toString()) : {}
-        const allowed = ['enginePath', 'modelsDir', 'ctx', 'ngl', 'bindHost']
-        const clean = Object.fromEntries(
-          Object.entries(patch).filter(([k]) => allowed.includes(k)),
-        )
+        const clean = {}
+
+        if (patch.enginePath !== undefined) {
+          clean.enginePath = patch.enginePath ? String(patch.enginePath) : null
+        }
+        if (patch.modelsDir !== undefined) {
+          clean.modelsDir = patch.modelsDir ? String(patch.modelsDir) : null
+        }
+        if (patch.ctx !== undefined) clean.ctx = wholeNumber(patch.ctx, 'ctx', 512, 1048576)
+        if (patch.ngl !== undefined) clean.ngl = wholeNumber(patch.ngl, 'ngl', 0, 999)
+        if (patch.bindHost !== undefined) {
+          const host = String(patch.bindHost || '127.0.0.1').trim()
+          // A literal address only: a hostname here would be resolved by
+          // llama-server at spawn time, where we cannot see what it resolves to.
+          if (!isIP(host)) {
+            throw new Error('bindHost must be an IP address — 127.0.0.1, or an adapter address')
+          }
+          clean.bindHost = host
+        }
+        if (patch.allowRemoteBackend !== undefined) {
+          clean.allowRemoteBackend = patch.allowRemoteBackend === true
+        }
+
         json(res, 200, writeConfig(DATA, clean))
       })
       .catch((err) => json(res, 400, { error: err.message }))
@@ -841,7 +916,10 @@ const server = createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/start') {
     readBody(req, 1e5)
       .then((buf) => {
-        const opts = buf.length ? JSON.parse(buf.toString()) : {}
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        const opts = {}
+        if (body.ctx !== undefined) opts.ctx = wholeNumber(body.ctx, 'ctx', 512, 1048576)
+        if (body.ngl !== undefined) opts.ngl = wholeNumber(body.ngl, 'ngl', 0, 999)
         json(res, 200, start(opts))
       })
       .catch((err) => json(res, 400, { error: err.message }))
@@ -855,7 +933,9 @@ const server = createServer((req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/upload') {
-    void handleUpload(req, res, url)
+    handleUpload(req, res, url).catch((err) => {
+      json(res, 500, { error: err.message })
+    })
     return
   }
 
@@ -898,4 +978,19 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 process.on('exit', () => {
   searxng.stop(DATA)
   tts.shutdown()
+})
+
+// The net under every route. A rejected promise nobody awaited used to end the
+// process (Node exits on an unhandled rejection), and one unauthenticated URL
+// was enough to find that out. Now it is a log line: a bad request is not a
+// reason to take the backend down, and the alternative is the user losing their
+// model mid-sentence to a malformed path.
+process.on('unhandledRejection', (err) => {
+  push(`[manager] unhandled rejection: ${err?.stack ?? String(err)}`)
+  console.error('[manager] unhandled rejection:', err)
+})
+
+process.on('uncaughtException', (err) => {
+  push(`[manager] uncaught exception: ${err?.stack ?? String(err)}`)
+  console.error('[manager] uncaught exception:', err)
 })
