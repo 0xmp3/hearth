@@ -63,12 +63,19 @@ You are given the memories that already exist, each with an id, and a transcript
 Return only facts that are NEW or that REPLACE an existing one.
 
 "add" — new facts. Each is one short sentence, third person.
-  scope "global"       about the user, true in every conversation (preferences, projects, hardware, skills)
-  scope "conversation" about this conversation only (a decision made here)
-  scope "character"    about the character or their world — their history, their setting,
-                       how they speak, what they know. Only true when talking to them.
+  scope "global"       about the person using the app: their preferences, projects, hardware,
+                       skills, decisions. Never about a character they are playing.
+  scope "conversation" about this conversation: a decision made here, or something that
+                       happened in this scene. Events belong here, not to the character.
+  scope "character"    durably true about the character or their world — their history, their
+                       nature, their setting, what they know. Not what happened in one scene.
 "remove" — ids from the existing list that are now wrong or superseded. Ids only, never text.
   If nothing is superseded, return an empty array.
+
+If the user is roleplaying, what their character does or becomes is a conversation fact, not a
+global one. Global is the real person at the keyboard — their machine, their projects, their
+preferences. "The user's magic is unstable" is a fact about a character in a story, and saving
+it globally puts it in front of every unrelated conversation they ever have.
 
 Store: preferences, ongoing projects, environment, tools, decisions, constraints.
 Never store: greetings, one-off questions, anything the assistant said about itself as an
