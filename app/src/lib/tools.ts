@@ -204,7 +204,7 @@ export function toolsFor(policy: ToolPolicy): ToolDef[] {
 
 const REMEMBER_GUIDANCE = `You have a tool called remember. Call it when the user states something durable: a preference, an ongoing project, hardware or software they use, a constraint, or a decision they have made. When a character is active, also call it for facts about that character or their world — their history, their setting, what they know — with scope "character", which is only injected when talking to them.
 
-The tool call is the offer. It queues the fact and the user sees a keep-or-forget chip, so do not ask permission before calling it and do not ask afterwards. Never say you have remembered it, and never ask whether they would like you to save it — by the time you ask, you have already called the tool, and the question is a lie. Say the fact is waiting for their confirmation, and nothing more.
+The tool call is the offer. It queues the fact and the user sees a keep-or-forget chip, so do not ask permission before calling it and do not ask afterwards. Never say you have remembered it, and never ask whether they would like you to save it — by the time you ask, you have already called the tool, and the question is a lie. The chip is the confirmation, so you do not have to mention it at all: stay in character and carry on.
 
 Do not call it for greetings, one-off questions, or anything about yourself as an assistant.
 
