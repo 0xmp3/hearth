@@ -29,7 +29,7 @@ import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
 import { agentTurn } from './lib/turn'
 import type { ToolPolicy } from './lib/tools'
-import { clearConversations, countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
+import { clearConversations, countMessages, exportAll, importAll, listMessages, listVectors, searchMessages, type Backup } from './lib/db'
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
 import { BASE_URL } from './lib/config'
 import { manager, type SpeechState } from './lib/backend'
@@ -168,6 +168,42 @@ export default function App() {
   // is held until the chat renders it, so switching and scrolling are one action
   // rather than two that race.
   const [jumpTo, setJumpTo] = useState<string | null>(null)
+  // How many vectors this conversation has, for the retrieval panel. Read when
+  // the dialog opens rather than kept in sync on every write: it is a label, not
+  // a source of truth.
+  const [indexCount, setIndexCount] = useState(0)
+  const [indexBusy, setIndexBusy] = useState(false)
+
+  // The count is a label, not a source of truth: read it when the panel opens and
+  // after an action, rather than keeping it in sync with every write.
+  useEffect(() => {
+    if (dialog !== 'tools' || !h.activeId) return
+    void listVectors(h.activeId)
+      .then((rows) => setIndexCount(rows.length))
+      .catch(() => setIndexCount(0))
+  }, [dialog, h.activeId, h.activeConversation?.index])
+
+  async function indexConversationNow() {
+    setIndexBusy(true)
+    try {
+      await h.setConversationIndex(true)
+      if (h.activeId) setIndexCount((await listVectors(h.activeId)).length)
+      await embed.refresh()
+    } finally {
+      setIndexBusy(false)
+    }
+  }
+
+  async function deleteConversationIndex() {
+    setIndexBusy(true)
+    try {
+      await h.setConversationIndex(false)
+      setIndexCount(0)
+      await embed.refresh()
+    } finally {
+      setIndexBusy(false)
+    }
+  }
   // The page a reply produced. Held here rather than in Chat so the panel
   // survives a re-render of the transcript.
   const [preview, setPreview] = useState<PreviewDoc | null>(null)
@@ -715,7 +751,10 @@ export default function App() {
             on: Boolean(h.activeConversation?.index),
             ready: embed.ready,
             reranked: embed.rerankReady,
-            onToggle: (on) => void h.setConversationIndex(on).then(() => embed.refresh()),
+            count: indexCount,
+            busy: indexBusy,
+            onIndex: () => void indexConversationNow(),
+            onDelete: () => void deleteConversationIndex(),
           }}
           onClose={() => setDialog(null)}
         />

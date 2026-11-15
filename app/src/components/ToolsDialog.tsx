@@ -27,7 +27,12 @@ type Props = {
     ready: boolean
     /** A reranker is configured, so results are reordered rather than just ranked. */
     reranked: boolean
-    onToggle: (on: boolean) => void
+    /** Vectors stored for this conversation. */
+    count: number
+    /** An index or delete is running. */
+    busy: boolean
+    onIndex: () => void
+    onDelete: () => void
   }
   onClose: () => void
 }
@@ -112,24 +117,31 @@ export default function ToolsDialog({
 
       <h4>Retrieval</h4>
       <p className="hint">
-        Index this conversation so the model can search it later — after the beginning has been
-        summarised away, and from other chats. The index is a cache: turning it off deletes the
-        vectors and loses nothing but the time to rebuild them. This is not memory. Memory is a fact
-        you chose to keep; this is the transcript, quoted back with a link to the message.
+        Indexing makes this conversation searchable from any other chat — including after its
+        beginning has been summarised away. It is not memory: memory is a fact you chose to keep,
+        this is the transcript, quoted back with a link to the message. The index is a cache, so
+        deleting it loses nothing but the time to rebuild it.
       </p>
-      <label className="field">
-        <span>Index this conversation</span>
-        <input
-          type="checkbox"
-          checked={index.on}
-          disabled={!index.ready}
-          onChange={(e) => index.onToggle(e.target.checked)}
-        />
-      </label>
+
+      <div className="row">
+        <button onClick={index.onIndex} disabled={!index.ready || index.busy}>
+          {index.on ? 'Re-index this conversation' : 'Index this conversation'}
+        </button>
+        <button className="ghost" onClick={index.onDelete} disabled={!index.on || index.busy}>
+          Delete index
+        </button>
+      </div>
+
+      <p className="hint">
+        {index.on
+          ? `${index.count} message${index.count === 1 ? '' : 's'} indexed. It stays indexed — and searchable from every chat — until you delete it.`
+          : 'Not indexed. Nothing from this chat is searchable yet.'}
+      </p>
+
       {!index.ready && (
         <p className="hint warn-note">
-          No embedding model is configured, so there is nothing to index with. The manager's
-          <code> embed </code> settings need a model path.
+          No embedding model is configured, so there is nothing to index with. Settings → Retrieval
+          sets one.
         </p>
       )}
       {index.ready && index.on && !index.reranked && (

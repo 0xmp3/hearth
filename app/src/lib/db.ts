@@ -757,6 +757,39 @@ export async function clearVectors(): Promise<void> {
   await tx('vectors', 'readwrite', (s) => s.clear())
 }
 
+/**
+ * Delete every vector and unset every conversation's index flag.
+ *
+ * The messages are untouched — this is the cache, not the transcript — which is
+ * why it is the one bulk action that needs no backup: nothing is lost but the
+ * time to rebuild.
+ */
+export async function clearAllIndexes(): Promise<{ vectors: number; conversations: number }> {
+  const db = await open()
+  const vectors = await countVectors()
+  let conversations = 0
+
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction(['conversations', 'vectors'], 'readwrite')
+    t.objectStore('vectors').clear()
+    const req = t.objectStore('conversations').openCursor()
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (!cursor) return
+      const conv = cursor.value as Conversation
+      if (conv.index) {
+        conversations += 1
+        cursor.update({ ...conv, index: false })
+      }
+      cursor.continue()
+    }
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+  })
+
+  return { vectors, conversations }
+}
+
 export function newId(): string {
   return crypto.randomUUID()
 }

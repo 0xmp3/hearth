@@ -5,6 +5,7 @@ import {
   type RerankDownloadState,
   type RerankState,
 } from '../lib/backend'
+import { clearAllIndexes } from '../lib/db'
 
 // Retrieval Settings: the two engines behind `search_history`.
 //
@@ -40,6 +41,7 @@ export default function RetrievalPanel({ onState }: Props) {
   const [ngl, setNgl] = useState('99')
   const [rNgl, setRNgl] = useState('0')
   const [candidates, setCandidates] = useState('10')
+  const [confirmClear, setConfirmClear] = useState(false)
   const poll = useRef<number | null>(null)
 
   const refresh = useCallback(async () => {
@@ -325,6 +327,35 @@ export default function RetrievalPanel({ onState }: Props) {
               Reranking is on but no model is set, so searches fall back to embedding order. Download
               one above, or point the field at a GGUF you already have.
             </p>
+          )}
+
+          <h4>Indexes</h4>
+          <p className="hint">
+            Deleting an index removes the vectors, not the messages — every conversation stays
+            exactly as it is, and can be indexed again. This is the one bulk action that needs no
+            backup.
+          </p>
+          {confirmClear ? (
+            <div className="row">
+              <button
+                onClick={() =>
+                  void act(async () => {
+                    await clearAllIndexes()
+                    setConfirmClear(false)
+                  }, 'the indexes could not be deleted')
+                }
+                disabled={busy}
+              >
+                Yes, delete every index
+              </button>
+              <button className="ghost" onClick={() => setConfirmClear(false)} disabled={busy}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button className="ghost" onClick={() => setConfirmClear(true)} disabled={busy}>
+              Delete all indexes
+            </button>
           )}
 
           {error && <p className="hint warn">{error}</p>}
