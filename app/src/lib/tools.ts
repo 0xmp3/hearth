@@ -59,11 +59,10 @@ export const TOOLS: ToolDef[] = [
         },
         scope: {
           type: 'string',
-          enum: ['global', 'conversation', 'character'],
+          enum: ['character', 'conversation'],
           description:
-            'global = true in every conversation. conversation = only true in this one. ' +
-            'character = about the character you are talking to or their world, and only ' +
-            'true when talking to them.',
+            'character = true in every chat with this character, which is the default. ' +
+            'conversation = only true in this one.',
         },
       },
       required: ['text', 'scope'],
@@ -388,26 +387,14 @@ export async function runTool(
   }
 
   const text = typeof args.text === 'string' ? args.text.trim() : ''
-  const scope =
-    args.scope === 'conversation'
-      ? 'conversation'
-      : args.scope === 'character'
-        ? 'character'
-        : 'global'
+  // Character is the default: a fact belongs to the character it was learned
+  // with, and a character with no name is a partition of its own.
+  const scope = args.scope === 'conversation' ? 'conversation' : 'character'
 
   if (!text) {
     return {
       text: 'Nothing was saved: "text" was empty.',
       record: { name, ok: false, summary: 'empty' },
-    }
-  }
-
-  // A character fact with no character is a fact that can never be found again:
-  // the injection matches on ownerId. Better to say so than to write a dead row.
-  if (scope === 'character' && !characterId) {
-    return {
-      text: 'Nothing was saved: no character is active in this conversation, so a character fact has nowhere to belong. Tell the user to switch to that character and ask again, or save it as "global" if it is really about them.',
-      record: { name, ok: false, summary: 'no character for a character fact' },
     }
   }
 

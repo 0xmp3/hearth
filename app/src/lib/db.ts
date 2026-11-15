@@ -386,7 +386,15 @@ export function deleteProfile(id: string): Promise<void> {
 
 // ---- memories ------------------------------------------------------------
 
-export type MemoryScope = 'global' | 'conversation' | 'character'
+/**
+ * Who a fact belongs to.
+ *
+ * There is no app-wide scope. A fact is either the character's — true in every
+ * chat with them, which is what "remembering an old scenario" means — or this
+ * conversation's. A character with no name is its own partition, so a blank
+ * character starts blank and a roleplay never leaks into a coding chat.
+ */
+export type MemoryScope = 'conversation' | 'character'
 
 export type Memory = {
   id: string

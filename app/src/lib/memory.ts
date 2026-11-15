@@ -30,8 +30,14 @@ import * as db from './db'
  */
 export const CAPTURE_EVERY = 10
 
-/** Roughly 500 tokens. Past this, memory starts crowding out the conversation. */
-const MAX_BLOCK_CHARS = 2000
+/**
+ * Roughly 750 tokens. Past this, memory starts crowding out the conversation.
+ *
+ * It was 2000, which a character with a few scenarios behind them now exceeds —
+ * and the loop below breaks silently, so the newest facts were the ones dropped.
+ * Raised, and the truncation is now stated in the block rather than hidden.
+ */
+const MAX_BLOCK_CHARS = 3000
 
 /** How much transcript one capture reads. */
 const MAX_TRANSCRIPT_CHARS = 12000
@@ -45,7 +51,7 @@ const SCHEMA = {
         type: 'object',
         properties: {
           text: { type: 'string' },
-          scope: { type: 'string', enum: ['global', 'conversation', 'character'] },
+          scope: { type: 'string', enum: ['conversation', 'character'] },
         },
         required: ['text', 'scope'],
         additionalProperties: false,
@@ -63,19 +69,18 @@ You are given the memories that already exist, each with an id, and a transcript
 Return only facts that are NEW or that REPLACE an existing one.
 
 "add" — new facts. Each is one short sentence, third person.
-  scope "global"       about the person using the app: their preferences, projects, hardware,
-                       skills, decisions. Never about a character they are playing.
-  scope "conversation" about this conversation: a decision made here, or something that
-                       happened in this scene. Events belong here, not to the character.
-  scope "character"    durably true about the character or their world — their history, their
-                       nature, their setting, what they know. Not what happened in one scene.
+  scope "character"    true in every chat with this character: their history, their nature,
+                       their setting, what they know, and what has happened to them. This is
+                       the default — a character remembers the scenarios they have been in.
+  scope "conversation" only true in this chat: a decision made here, or a detail that would be
+                       wrong to carry into another scene.
 "remove" — ids from the existing list that are now wrong or superseded. Ids only, never text.
   If nothing is superseded, return an empty array.
 
-If the user is roleplaying, what their character does or becomes is a conversation fact, not a
-global one. Global is the real person at the keyboard — their machine, their projects, their
-preferences. "The user's magic is unstable" is a fact about a character in a story, and saving
-it globally puts it in front of every unrelated conversation they ever have.
+There is no app-wide memory. A fact belongs to the character it was learned with, so a roleplay
+never leaks into an unrelated chat, and a character with no name has a memory of its own. When
+no character is active, the facts still use scope "character" — they belong to that empty
+character, not to the app.
 
 Store: preferences, ongoing projects, environment, tools, decisions, constraints.
 Never store: greetings, one-off questions, anything the assistant said about itself as an
@@ -179,7 +184,7 @@ export async function extractMemories(
           return (
             typeof o.text === 'string' &&
             o.text.trim().length > 0 &&
-            (o.scope === 'global' || o.scope === 'conversation' || o.scope === 'character')
+            (o.scope === 'conversation' || o.scope === 'character')
           )
         })
         .map((a) => ({ text: a.text.trim(), scope: a.scope })),
@@ -256,9 +261,10 @@ export function buildMemoryBlock(
     if (m.kind === 'summary') return false
     // A fact the user has not accepted yet is not something the model knows.
     if (m.pending) return false
-    if (m.scope === 'global') return true
     if (m.scope === 'conversation') return m.ownerId === conversationId
-    if (m.scope === 'character') return m.ownerId === characterId
+    // `?? null` on both sides, so "no character" is a partition rather than a
+    // hole: a blank character has its own memory and shares it with nothing.
+    if (m.scope === 'character') return (m.ownerId ?? null) === (characterId ?? null)
     return false
   })
 
@@ -271,23 +277,29 @@ export function buildMemoryBlock(
   // memories. The grouping says what each fact is about, and the last line says
   // the thing the model kept getting wrong.
   const groups: { label: string; items: db.Memory[] }[] = [
-    { label: 'About the user:', items: relevant.filter((m) => m.scope === 'global') },
     { label: 'About this character:', items: relevant.filter((m) => m.scope === 'character') },
     { label: 'About this conversation:', items: relevant.filter((m) => m.scope === 'conversation') },
   ]
 
   const lines: string[] = []
   let used = 0
+  let dropped = 0
   for (const group of groups) {
     if (!group.items.length) continue
     lines.push(group.label)
     for (const m of group.items) {
-      const line = `- ${m.text}`
-      if (used + line.length > MAX_BLOCK_CHARS) break
+      const line = `- (${when(m, conversationId)}) ${m.text}`
+      if (used + line.length > MAX_BLOCK_CHARS) {
+        dropped += 1
+        continue
+      }
       lines.push(line)
       used += line.length + 1
     }
   }
+  // Said out loud rather than hidden: a model that does not know facts were
+  // dropped will answer as if the list is complete.
+  if (dropped) lines.push(`(${dropped} older fact${dropped === 1 ? '' : 's'} not shown — the list is full)`)
 
   return [
     // Passive voice on purpose: "facts you previously recorded" implies the
@@ -298,8 +310,58 @@ export function buildMemoryBlock(
     // The line that stops the rephrasing loop. Without it the model treats this
     // block as background about the user and re-saves its own facts as new ones.
     'Everything below is already saved. Do not save any of it again, even in different words.',
+    // Continuity: a character remembers every scenario they have been in, so the
+    // model has to be able to tell the current scene from an old one. The date
+    // and the chat it came from are the only signals it has.
+    'A fact marked "another chat" happened earlier, possibly in a different scenario. It is history, not the current scene — refer to it as something that happened before, and do not assume the scene is still that one.',
     '<memory>',
     ...lines,
     '</memory>',
   ].join('\n')
+}
+
+/**
+ * One-time: the app-wide "global" scope is gone.
+ *
+ * A fact now belongs to the character it was learned with, so a roleplay cannot
+ * leak into a coding chat. Existing global facts are re-homed through the
+ * conversation they came from — the only record of who was talking when they
+ * were written.
+ *
+ * It takes the resolver rather than reading state, because it must run *after*
+ * the character list has loaded: run at boot, `resolveCharacter` answers null for
+ * everything and every fact lands in the empty partition.
+ */
+export async function migrateGlobalScope(
+  resolveCharacter: (id: string | null | undefined) => db.Character | null,
+): Promise<number> {
+  const done = await db.getMeta<{ at: number }>('migrated.globalScope')
+  if (done) return 0
+
+  const all = await db.listMemories()
+  const globals = all.filter((m) => (m.scope as string) === 'global')
+  if (globals.length) {
+    const convs = await db.listConversations()
+    for (const m of globals) {
+      const conv = convs.find((c) => c.id === m.sourceConversationId)
+      const owner = resolveCharacter(conv?.characterId)?.id ?? null
+      await db.putMemory({ ...m, scope: 'character', ownerId: owner ?? undefined, updatedAt: Date.now() })
+    }
+  }
+  await db.setMeta('migrated.globalScope', { at: Date.now(), moved: globals.length })
+  return globals.length
+}
+
+/**
+ * When a fact was recorded, and whether it came from this chat.
+ *
+ * The second half is the part that matters: a character carries every scenario
+ * they have ever been in, so "the library is flooding" from three days ago and
+ * "the library is flooding" from this scene are the same sentence and different
+ * situations. The model can only tell them apart if the block says so.
+ */
+function when(m: db.Memory, conversationId: string | null): string {
+  const date = new Date(m.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  const elsewhere = Boolean(m.sourceConversationId) && m.sourceConversationId !== conversationId
+  return elsewhere ? `${date}, another chat` : date
 }

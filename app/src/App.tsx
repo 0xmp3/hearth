@@ -28,6 +28,7 @@ import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
 import { agentTurn } from './lib/turn'
+import { migrateGlobalScope } from './lib/memory'
 import { familyOf, type ToolName, type ToolPolicy } from './lib/tools'
 import { clearConversations, countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
 import { listVectors } from './lib/store'
@@ -61,6 +62,16 @@ type DialogName =
 
 export default function App() {
   const characters = useCharacters()
+
+  // One-time, and only once the character list has loaded: the migration resolves
+  // each old global fact through the conversation it came from, and an empty
+  // character list would send every one of them to the empty partition.
+  useEffect(() => {
+    if (!characters.characters.length) return
+    void migrateGlobalScope((id) => characters.resolve(id)).catch(() => {})
+    // Runs once per load; the migration itself is gated on a flag in the store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [characters.characters.length])
   const prompts = usePrompts()
   const { prefs, update: updatePrefs } = usePrefs()
   // Seeded once from the old preferences, so an existing name is not lost.
@@ -761,6 +772,7 @@ export default function App() {
         <MemoryDialog
           memories={h.memories}
           characters={characters.characters}
+          characterId={characters.resolve(h.activeConversation?.characterId)?.id ?? null}
           capturing={h.capturing}
           condensing={h.condensing}
           onClose={() => setDialog(null)}

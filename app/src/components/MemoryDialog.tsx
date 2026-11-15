@@ -12,6 +12,8 @@ type Props = {
   memories: db.Memory[]
   /** Named so a character fact says *which* character, not just "this one". */
   characters?: db.Character[]
+  /** The character a fact typed here belongs to. Null means the empty partition. */
+  characterId?: string | null
   capturing: boolean
   condensing: boolean
   onClose: () => void
@@ -22,7 +24,6 @@ type Props = {
 }
 
 const SCOPE_LABEL: Record<db.MemoryScope, string> = {
-  global: 'Everywhere',
   conversation: 'This conversation',
   character: 'This character',
 }
@@ -30,6 +31,7 @@ const SCOPE_LABEL: Record<db.MemoryScope, string> = {
 export default function MemoryDialog({
   memories,
   characters = [],
+  characterId = null,
   capturing,
   condensing,
   onClose,
@@ -49,7 +51,10 @@ export default function MemoryDialog({
     await db.putMemory({
       id: db.newId(),
       text,
-      scope: 'global',
+      // A fact typed here belongs to the character you are talking to, which is
+      // the same place the extractor puts one. There is no app-wide memory.
+      scope: 'character',
+      ownerId: characterId ?? undefined,
       createdAt: now,
       updatedAt: now,
     })
@@ -103,7 +108,7 @@ export default function MemoryDialog({
   // they are kept, so they get their own section at the top.
   const pending = memories.filter((m) => m.kind !== 'summary' && m.pending)
   const facts = memories.filter((m) => m.kind !== 'summary' && !m.pending)
-  const groups: db.MemoryScope[] = ['global', 'conversation', 'character']
+  const groups: db.MemoryScope[] = ['character', 'conversation']
 
   /**
    * A character fact belongs to one character, and "This character" is a lie once
