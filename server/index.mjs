@@ -28,6 +28,7 @@ import { readUrl } from './net/fetch.mjs'
 import { webSearch } from './net/search.mjs'
 import * as searxng from './searxng/install.mjs'
 import * as tts from './tts/index.mjs'
+import * as embed from './embed/index.mjs'
 import * as ws from './workspace/files.mjs'
 import {
   BIN,
@@ -727,6 +728,43 @@ const server = createServer((req, res) => {
     return
   }
 
+  // ---- embeddings ---------------------------------------------------------
+  //
+  // Same shape as speech: the manager owns a second llama-server, started on
+  // demand and idled out. The app never talks to it directly — a local engine
+  // sends no CORS headers, so a direct fetch from the page is silently
+  // discarded (trap 21). The vectors themselves stay in the browser, next to the
+  // messages they were made from; this route only turns text into numbers.
+
+  if (req.method === 'GET' && url.pathname === '/api/embed') {
+    embed
+      .describe(DATA)
+      .then((state) => json(res, 200, state))
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/embed/config') {
+    readBody(req, 1e4)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        embed.saveEmbedConfig(DATA, body)
+        json(res, 200, await embed.describe(DATA))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/embed') {
+    readBody(req, 4e6)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        json(res, 200, await embed.embed(DATA, body))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
   // ---- speech -------------------------------------------------------------
   //
   // The manager owns the engine and the clips; the app only asks for audio. The
@@ -969,6 +1007,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
     metrics.stop()
     searxng.stop(DATA)
     tts.shutdown()
+    embed.shutdown()
     process.exit(0)
   })
 }
@@ -978,6 +1017,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 process.on('exit', () => {
   searxng.stop(DATA)
   tts.shutdown()
+  embed.shutdown()
 })
 
 // The net under every route. A rejected promise nobody awaited used to end the

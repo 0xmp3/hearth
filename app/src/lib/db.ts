@@ -81,7 +81,7 @@ export type Message = {
 }
 
 const DB_NAME = 'hearth'
-const DB_VERSION = 6
+const DB_VERSION = 7
 
 let handle: Promise<IDBDatabase> | null = null
 
@@ -122,6 +122,14 @@ function open(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('profiles')) {
         db.createObjectStore('profiles', { keyPath: 'id' })
       }
+      // v7. Embedding vectors. Derived data: the message is the truth and every
+      // row here can be rebuilt from it, which is what makes an opt-in toggle
+      // safe. Keyed by message *and part*, because a long message is split.
+      if (!db.objectStoreNames.contains('vectors')) {
+        const store = db.createObjectStore('vectors', { keyPath: 'id' })
+        store.createIndex('conversationId', 'conversationId')
+        store.createIndex('messageId', 'messageId')
+      }
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
@@ -160,7 +168,7 @@ export function putConversation(c: Conversation): Promise<IDBValidKey> {
 export async function deleteConversation(id: string): Promise<void> {
   const db = await open()
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'messages'], 'readwrite')
+    const t = db.transaction(['conversations', 'messages', 'vectors'], 'readwrite')
     t.objectStore('conversations').delete(id)
     const idx = t.objectStore('messages').index('conversationId')
     const cursorReq = idx.openKeyCursor(IDBKeyRange.only(id))
@@ -168,6 +176,16 @@ export async function deleteConversation(id: string): Promise<void> {
       const cursor = cursorReq.result
       if (!cursor) return
       t.objectStore('messages').delete(cursor.primaryKey)
+      cursor.continue()
+    }
+    // Vectors are derived, but an orphan is still a leak: the index would keep
+    // returning chunks whose message no longer exists.
+    const vIdx = t.objectStore('vectors').index('conversationId')
+    const vReq = vIdx.openKeyCursor(IDBKeyRange.only(id))
+    vReq.onsuccess = () => {
+      const cursor = vReq.result
+      if (!cursor) return
+      t.objectStore('vectors').delete(cursor.primaryKey)
       cursor.continue()
     }
     t.oncomplete = () => resolve()
@@ -203,9 +221,12 @@ export async function clearConversations(): Promise<{
   ])
 
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'messages', 'memories'], 'readwrite')
+    const t = db.transaction(['conversations', 'messages', 'memories', 'vectors'], 'readwrite')
     t.objectStore('conversations').clear()
     t.objectStore('messages').clear()
+    // Every vector belongs to a message, so clearing the messages clears the
+    // index with them.
+    t.objectStore('vectors').clear()
     // Only conversation-scoped memories: a summary belongs to its thread, a fact
     // about the user does not.
     const idx = t.objectStore('memories').index('scope')
@@ -238,7 +259,24 @@ export function putMessage(m: Message): Promise<IDBValidKey> {
 }
 
 export async function deleteMessage(id: string): Promise<void> {
-  await tx('messages', 'readwrite', (s) => s.delete(id))
+  const db = await open()
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction(['messages', 'vectors'], 'readwrite')
+    t.objectStore('messages').delete(id)
+    // A message's vectors are derived from it, so they go with it. This is the
+    // single choke point for regenerate and edit-with-fork, which is why the
+    // cleanup lives here rather than in each caller.
+    const idx = t.objectStore('vectors').index('messageId')
+    const req = idx.openKeyCursor(IDBKeyRange.only(id))
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (!cursor) return
+      t.objectStore('vectors').delete(cursor.primaryKey)
+      cursor.continue()
+    }
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+  })
 }
 
 export type SearchHit = {
@@ -589,6 +627,107 @@ export function putMemory(m: Memory): Promise<IDBValidKey> {
 
 export function deleteMemory(id: string): Promise<undefined> {
   return tx('memories', 'readwrite', (s) => s.delete(id))
+}
+
+// ---- vectors -------------------------------------------------------------
+
+/**
+ * One embedded part of one message.
+ *
+ * The message is the truth; this is a cache keyed to it. `hash` is of the text
+ * that was embedded, so an edited message is re-embedded and an unchanged one is
+ * skipped — without it, every re-index would re-embed the whole conversation.
+ */
+export type VectorRow = {
+  /** `${messageId}` or `${messageId}#${part}` for a long message. */
+  id: string
+  messageId: string
+  conversationId: string
+  part: number
+  hash: string
+  chars: number
+  /** Which embedding model produced this vector, and at what width. */
+  model: string
+  dims: number
+  /** L2-normalised on write, so a dot product is the cosine. */
+  vector: Float32Array
+  createdAt: number
+}
+
+export async function putVectors(rows: VectorRow[]): Promise<void> {
+  if (!rows.length) return
+  const db = await open()
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction('vectors', 'readwrite')
+    for (const row of rows) t.objectStore('vectors').put(row)
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error)
+  })
+}
+
+export async function listVectors(conversationId?: string): Promise<VectorRow[]> {
+  const db = await open()
+  if (!conversationId) {
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('vectors', 'readonly')
+      const req = t.objectStore('vectors').getAll()
+      req.onsuccess = () => resolve(req.result as VectorRow[])
+      req.onerror = () => reject(req.error)
+    })
+  }
+  return new Promise((resolve, reject) => {
+    const t = db.transaction('vectors', 'readonly')
+    const req = t.objectStore('vectors').index('conversationId').getAll(IDBKeyRange.only(conversationId))
+    req.onsuccess = () => resolve(req.result as VectorRow[])
+    req.onerror = () => reject(req.error)
+  })
+}
+
+export async function deleteVectorsForMessage(messageId: string): Promise<void> {
+  const db = await open()
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction('vectors', 'readwrite')
+    const req = t.objectStore('vectors').index('messageId').openKeyCursor(IDBKeyRange.only(messageId))
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (!cursor) return
+      t.objectStore('vectors').delete(cursor.primaryKey)
+      cursor.continue()
+    }
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+  })
+}
+
+export async function deleteVectorsForConversation(conversationId: string): Promise<void> {
+  const db = await open()
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction('vectors', 'readwrite')
+    const req = t.objectStore('vectors').index('conversationId').openKeyCursor(IDBKeyRange.only(conversationId))
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (!cursor) return
+      t.objectStore('vectors').delete(cursor.primaryKey)
+      cursor.continue()
+    }
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+  })
+}
+
+export async function countVectors(): Promise<number> {
+  const db = await open()
+  return new Promise((resolve, reject) => {
+    const t = db.transaction('vectors', 'readonly')
+    const req = t.objectStore('vectors').count()
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+export async function clearVectors(): Promise<void> {
+  await tx('vectors', 'readwrite', (s) => s.clear())
 }
 
 export function newId(): string {

@@ -157,6 +157,32 @@ export type SpeechState = {
   log: string[]
 }
 
+/** Embedding state as the manager reports it. */
+export type EmbedState = {
+  enabled: boolean
+  /** Engine present and the model file exists. */
+  ready: boolean
+  engine: { path: string; exists: boolean }
+  model: { path: string; exists: boolean; bytes: number }
+  port: number
+  pooling: string
+  /** Applied to every text by the manager, on both sides of a search. */
+  prefix: string
+  queryPrefix: string
+  ngl: number
+  idleMinutes: number
+  serverRunning: boolean
+  error: string | null
+  log: string[]
+}
+
+export type EmbedResult = {
+  model: string
+  dims: number
+  vectors: number[][]
+  tokens: number | null
+}
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
   /** Egress is the manager's decision; the app only asks. */
@@ -215,6 +241,12 @@ export const manager = {
     if (!res.ok) return null
     return res.arrayBuffer()
   },
+  embedState: () => call<EmbedState>('/api/embed'),
+  saveEmbed: (patch: Partial<Pick<EmbedState, 'enabled' | 'port' | 'ngl' | 'idleMinutes' | 'pooling' | 'prefix' | 'queryPrefix'>> & { model?: string }) =>
+    call<EmbedState>('/api/embed/config', { method: 'POST', body: JSON.stringify(patch) }),
+  /** Text in, vectors out. The manager owns the engine; the page never sees it. */
+  embed: (input: string | string[], kind: 'document' | 'query' = 'document') =>
+    call<EmbedResult>('/api/embed', { method: 'POST', body: JSON.stringify({ input, kind }) }),
 }
 
 /** The context size the running server was launched with, if it is ours. */
