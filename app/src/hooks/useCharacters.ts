@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import * as db from '../lib/db'
 
 const ACTIVE_KEY = 'hearth.character'
+const META = 'active.character'
 
 export function useCharacters() {
   const [characters, setCharacters] = useState<db.Character[]>([])
@@ -18,6 +19,22 @@ export function useCharacters() {
 
   useEffect(() => {
     void db.listCharacters().then(setCharacters)
+  }, [])
+
+  // Which character is active is a setting, so it lives on disk with the rest.
+  // localStorage stays as the cache that makes the first paint right.
+  useEffect(() => {
+    let cancelled = false
+    void db
+      .getMeta<string | null>(META)
+      .then((saved) => {
+        if (cancelled || saved === undefined) return
+        setActiveId(saved)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const active = characters.find((p) => p.id === activeId) ?? null
@@ -41,6 +58,7 @@ export function useCharacters() {
     } catch {
       // preference only; not fatal
     }
+    void db.setMeta(META, id).catch(() => {})
   }
 
   async function save(character: db.Character) {

@@ -282,7 +282,8 @@ export function useHearth(
         },
         // Tools run in the app, not the model: this is the only place a reply
         // can change anything outside itself.
-        runTool: (name, args) => executeTool(name, args, conv.id, policyForConv(conv)),
+        runTool: (name, args) =>
+          executeTool(name, args, conv.id, policyForConv(conv), resolveCharacter?.(conv.characterId)?.id ?? null),
         // The driver builds the tool list from this, so a family that is off
         // never reaches the request at all.
         tools: policyForConv(conv),
@@ -328,7 +329,11 @@ export function useHearth(
       // does not queue behind the chat model — but it is still background work,
       // and a failure here must not touch the reply the user just got.
       if (conv.index) {
-        void inBackground(() => indexConversation(conv.id).catch(() => {}))
+        void inBackground(() =>
+          indexConversation(conv.id, { characterId: resolveCharacter?.(conv.characterId)?.id ?? null }).catch(
+            () => {},
+          ),
+        )
       }
       // Compaction is triggered by measured pressure — what the request actually
       // cost — and deliberately not gated on the reply having content: a reply
@@ -464,8 +469,10 @@ export function useHearth(
     const id = activeId
     if (!id) return
     try {
-      if (on) await indexConversation(id)
-      else await dropConversationIndex(id)
+      if (on) {
+        const conv = conversations.find((c) => c.id === id)
+        await indexConversation(id, { characterId: resolveCharacter?.(conv?.characterId)?.id ?? null })
+      } else await dropConversationIndex(id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -617,10 +624,20 @@ export function useHearth(
       // Facts only: a summary is not a fact, and must never be offered to the
       // model as something it can retire.
       const existing = factsOf(await db.listMemories())
-      const extraction = await extractMemories(resolveModel(conv.model) || model, msgs, existing)
+      // The character decides which scope a fact belongs to, so the extractor has
+      // to know who it is talking to — otherwise every roleplay fact lands in
+      // "global" and follows you into every other conversation.
+      const character = resolveCharacter?.(conv.characterId) ?? null
+      const extraction = await extractMemories(
+        resolveModel(conv.model) || model,
+        msgs,
+        existing,
+        undefined,
+        character?.name ?? null,
+      )
       if (!extraction) return { added: 0, removed: 0 }
 
-      const result = await applyExtraction(extraction, existing, conv.id)
+      const result = await applyExtraction(extraction, existing, conv.id, character?.id ?? null)
       setMemories(await db.listMemories())
       await db.setMeta(`memory.capture.${conv.id}`, Date.now())
       return result

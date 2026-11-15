@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import * as db from '../lib/db'
 
 const ACTIVE_KEY = 'hearth.profile'
+const META = 'active.profile'
 
 /**
  * A fixed id makes the seed idempotent. React's StrictMode mounts effects
@@ -58,6 +59,22 @@ export function useProfiles(seed: ProfileSeed) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Which profile is active is a setting, so it lives on disk with the rest.
+  // localStorage stays as the cache that makes the first paint right.
+  useEffect(() => {
+    let cancelled = false
+    void db
+      .getMeta<string | null>(META)
+      .then((saved) => {
+        if (cancelled || saved === undefined) return
+        setActiveId(saved)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const active = profiles.find((p) => p.id === activeId) ?? profiles[0] ?? null
 
   /**
@@ -78,6 +95,7 @@ export function useProfiles(seed: ProfileSeed) {
     } catch {
       // preference only; not fatal
     }
+    void db.setMeta(META, id).catch(() => {})
   }
 
   async function save(profile: db.Profile) {

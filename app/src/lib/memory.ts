@@ -48,15 +48,16 @@ const SCHEMA = {
   additionalProperties: false,
 }
 
-const SYSTEM = `You maintain a memory of durable facts about the user.
+const SYSTEM = `You maintain a memory of durable facts.
 
 You are given the memories that already exist, each with an id, and a transcript.
 Return only facts that are NEW or that REPLACE an existing one.
 
-"add" — new facts. Each is one short sentence, third person, about the user.
-  scope "global"       true in every conversation (preferences, projects, hardware, skills)
-  scope "conversation" only true for this conversation (a decision made here)
-  scope "character"      only true when talking to a particular character
+"add" — new facts. Each is one short sentence, third person.
+  scope "global"       about the user, true in every conversation (preferences, projects, hardware, skills)
+  scope "conversation" about this conversation only (a decision made here)
+  scope "character"    about the character or their world — their history, their setting,
+                       how they speak, what they know. Only true when talking to them.
 "remove" — ids from the existing list that are now wrong or superseded. Ids only, never text.
   If nothing is superseded, return an empty array.
 
@@ -94,11 +95,20 @@ export async function extractMemories(
   messages: db.Message[],
   existing: db.Memory[],
   signal?: AbortSignal,
+  characterName?: string | null,
 ): Promise<Extraction | null> {
   const transcript = transcriptOf(messages)
   if (!transcript.trim()) return null
 
   const known = existing.map((m) => ({ id: m.id, text: m.text }))
+
+  // Naming the character is what makes the "character" scope usable: without it
+  // the model has no idea which of the three scopes a fact about the setting
+  // belongs to, and it defaults to global — which is how a roleplay fact ends up
+  // in every conversation you ever have.
+  const who = characterName
+    ? `\n\nYou are talking to the character "${characterName}". Facts about them or their world use scope "character".`
+    : '\n\nNo character is active, so do not use scope "character".'
 
   const res = await fetch(`${MANAGER}/api/chat`, {
     method: 'POST',
@@ -111,7 +121,7 @@ export async function extractMemories(
         { role: 'system', content: SYSTEM },
         {
           role: 'user',
-          content: `Existing memories:\n${JSON.stringify(known)}\n\nTranscript:\n${transcript}`,
+          content: `Existing memories:\n${JSON.stringify(known)}\n\nTranscript:\n${transcript}${who}`,
         },
       ],
       // Extraction is a mechanical task; thinking about it is pure cost. On a
@@ -167,6 +177,7 @@ export async function applyExtraction(
   extraction: Extraction,
   existing: db.Memory[],
   conversationId: string,
+  characterId: string | null = null,
 ): Promise<{ added: number; removed: number }> {
   const byId = new Map(existing.map((m) => [m.id, m]))
   let removed = 0
@@ -190,7 +201,16 @@ export async function applyExtraction(
       id: db.newId(),
       text: item.text,
       scope: item.scope,
-      ownerId: item.scope === 'conversation' ? conversationId : undefined,
+      // A scoped fact without an owner is a fact that can never be found again:
+      // `buildMemoryBlock` matches on ownerId, so a character fact written with
+      // no owner was silently dead. The owner is the conversation for a
+      // conversation fact and the character for a character fact.
+      ownerId:
+        item.scope === 'conversation'
+          ? conversationId
+          : item.scope === 'character'
+            ? (characterId ?? undefined)
+            : undefined,
       createdAt: now,
       updatedAt: now,
       sourceConversationId: conversationId,

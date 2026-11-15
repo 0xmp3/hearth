@@ -56,9 +56,11 @@ export const TOOLS: ToolDef[] = [
         },
         scope: {
           type: 'string',
-          enum: ['global', 'conversation'],
+          enum: ['global', 'conversation', 'character'],
           description:
-            'global = true in every conversation. conversation = only true in this one.',
+            'global = true in every conversation. conversation = only true in this one. ' +
+            'character = about the character you are talking to or their world, and only ' +
+            'true when talking to them.',
         },
       },
       required: ['text', 'scope'],
@@ -273,6 +275,7 @@ export async function runTool(
   rawArgs: unknown,
   conversationId: string,
   opts: ToolPolicy = NO_TOOLS,
+  characterId: string | null = null,
 ): Promise<ToolOutcome> {
   if (!KNOWN.has(name)) {
     return {
@@ -297,7 +300,7 @@ export async function runTool(
   if (name === 'list_files' || name === 'search_files' || name === 'read_file') {
     return runWorkspaceTool(name, args, opts.files)
   }
-  if (name === 'search_history') return searchHistory(args, opts.history)
+  if (name === 'search_history') return searchHistory(args, opts.history, characterId)
   if (name === 'remember' && !opts.memory) {
     return {
       text: 'Tools are off in this conversation, so nothing was saved. Nothing else needs doing.',
@@ -306,12 +309,26 @@ export async function runTool(
   }
 
   const text = typeof args.text === 'string' ? args.text.trim() : ''
-  const scope = args.scope === 'conversation' ? 'conversation' : 'global'
+  const scope =
+    args.scope === 'conversation'
+      ? 'conversation'
+      : args.scope === 'character'
+        ? 'character'
+        : 'global'
 
   if (!text) {
     return {
       text: 'Nothing was saved: "text" was empty.',
       record: { name, ok: false, summary: 'empty' },
+    }
+  }
+
+  // A character fact with no character is a fact that can never be found again:
+  // the injection matches on ownerId. Better to say so than to write a dead row.
+  if (scope === 'character' && !characterId) {
+    return {
+      text: 'Nothing was saved: no character is active in this conversation, so a character fact has nowhere to belong. Use "global" or "conversation".',
+      record: { name, ok: false, summary: 'no character for a character fact' },
     }
   }
 
@@ -335,7 +352,8 @@ export async function runTool(
     id,
     text,
     scope,
-    ownerId: scope === 'conversation' ? conversationId : undefined,
+    ownerId:
+      scope === 'conversation' ? conversationId : scope === 'character' ? (characterId ?? undefined) : undefined,
     createdAt: now,
     updatedAt: now,
     sourceConversationId: conversationId,
@@ -372,7 +390,11 @@ function day(ms: number): string {
  * per citation and the user can check the claim in one click. A retrieval the user
  * cannot inspect is a retrieval they have to trust.
  */
-async function searchHistory(args: Record<string, unknown>, allowed: boolean): Promise<ToolOutcome> {
+async function searchHistory(
+  args: Record<string, unknown>,
+  allowed: boolean,
+  characterId: string | null = null,
+): Promise<ToolOutcome> {
   const name = 'search_history'
   if (!allowed) {
     return {
@@ -389,7 +411,10 @@ async function searchHistory(args: Record<string, unknown>, allowed: boolean): P
   const limit = Math.max(1, Math.min(20, Number(args.limit) || 8))
 
   try {
-    const result = await searchVectors(query, { limit })
+    // Scoped to the character you are talking to: a roleplay chat must not
+    // surface in a coding one, and vice versa. The no-character corpus is its
+    // own scope, not "everything".
+    const result = await searchVectors(query, { limit, characterId })
     if (!result.hits.length) {
       return {
         text:

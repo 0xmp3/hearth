@@ -14,6 +14,16 @@ export type VectorRow = {
   id: string
   messageId: string
   conversationId: string
+  /**
+   * The character the conversation spoke as when this was indexed, or null.
+   *
+   * Retrieval is per character: a search from a conversation with Elara looks
+   * only at what was said with Elara, so a roleplay chat cannot surface in a
+   * coding one. Stored per row rather than per conversation because a
+   * conversation can change character mid-thread, and the old rows were said in
+   * the old character's context.
+   */
+  characterId?: string | null
   part: number
   hash: string
   chars: number

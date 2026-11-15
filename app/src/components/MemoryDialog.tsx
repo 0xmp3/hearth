@@ -10,6 +10,8 @@ import * as db from '../lib/db'
 
 type Props = {
   memories: db.Memory[]
+  /** Named so a character fact says *which* character, not just "this one". */
+  characters?: db.Character[]
   capturing: boolean
   condensing: boolean
   onClose: () => void
@@ -27,6 +29,7 @@ const SCOPE_LABEL: Record<db.MemoryScope, string> = {
 
 export default function MemoryDialog({
   memories,
+  characters = [],
   capturing,
   condensing,
   onClose,
@@ -101,6 +104,17 @@ export default function MemoryDialog({
   const pending = memories.filter((m) => m.kind !== 'summary' && m.pending)
   const facts = memories.filter((m) => m.kind !== 'summary' && !m.pending)
   const groups: db.MemoryScope[] = ['global', 'conversation', 'character']
+
+  /**
+   * A character fact belongs to one character, and "This character" is a lie once
+   * there is more than one. The owner is the id, so the name is a lookup — and a
+   * deleted character is named as such rather than silently relabelled.
+   */
+  function labelFor(m: db.Memory): string {
+    if (m.scope !== 'character') return SCOPE_LABEL[m.scope]
+    const owner = characters.find((c) => c.id === m.ownerId)
+    return owner ? owner.name : 'a deleted character'
+  }
 
   return (
     <Dialog
@@ -204,7 +218,7 @@ export default function MemoryDialog({
             {pending.map((m) => (
               <li key={m.id} className="memory-item">
                 <span className="memory-text">
-                  <span className="character-note">{SCOPE_LABEL[m.scope]}</span>
+                  <span className="character-note">{labelFor(m)}</span>
                   {m.text}
                 </span>
                 <button className="ghost tiny" onClick={() => void keep(m)}>
@@ -227,7 +241,7 @@ export default function MemoryDialog({
           if (!items.length) return null
           return (
             <section key={scope} className="setting">
-              <h3>{SCOPE_LABEL[scope]}</h3>
+              <h3>{scope === 'character' ? 'Characters' : SCOPE_LABEL[scope]}</h3>
               <ul className="memory-list">
                 {items.map((m) => (
                   <li key={m.id} className="memory-item">

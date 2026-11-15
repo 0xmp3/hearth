@@ -134,11 +134,16 @@ export type IndexOutcome = {
  */
 export async function indexConversation(
   conversationId: string,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; characterId?: string | null } = {},
 ): Promise<IndexOutcome> {
   const state = await manager.embedState()
   if (!state.enabled) throw new Error('indexing is off — turn it on in Settings')
   if (!state.ready) throw new Error('no embedding model is set')
+
+  // The character is part of what a vector *is*: it decides which corpus the row
+  // belongs to. A conversation that changes character therefore has stale rows,
+  // and they are re-embedded rather than silently left in the old corpus.
+  const characterId = opts.characterId ?? null
 
   const meta = await store.getVectorMeta()
   const changedModel = Boolean(meta && meta.model !== state.model.path)
@@ -158,10 +163,10 @@ export async function indexConversation(
   if (changedModel) await store.clearVectors()
 
   const messages = await db.listMessages(conversationId)
-  const existing = new Map<string, Map<number, string>>()
+  const existing = new Map<string, Map<number, { hash: string; characterId: string | null }>>()
   for (const row of await store.listVectors(conversationId)) {
-    const parts = existing.get(row.messageId) ?? new Map<number, string>()
-    parts.set(row.part, row.hash)
+    const parts = existing.get(row.messageId) ?? new Map<number, { hash: string; characterId: string | null }>()
+    parts.set(row.part, { hash: row.hash, characterId: row.characterId ?? null })
     existing.set(row.messageId, parts)
   }
 
@@ -175,7 +180,10 @@ export async function indexConversation(
     const unchanged =
       have &&
       have.size === parts.length &&
-      parts.every((text, part) => have.get(part) === hashText(text))
+      parts.every((text, part) => {
+        const row = have.get(part)
+        return row?.hash === hashText(text) && row.characterId === characterId
+      })
     if (unchanged) {
       skipped += 1
       continue
@@ -200,6 +208,7 @@ export async function indexConversation(
       id: item.part ? `${item.message.id}#${item.part}` : item.message.id,
       messageId: item.message.id,
       conversationId,
+      characterId,
       part: item.part,
       hash: item.hash,
       chars: item.text.length,
@@ -282,7 +291,21 @@ export type SearchOutcome = {
  */
 export async function searchVectors(
   query: string,
-  opts: { limit?: number; floor?: number; conversationId?: string; candidates?: number } = {},
+  opts: {
+    limit?: number
+    floor?: number
+    conversationId?: string
+    candidates?: number
+    /**
+     * Search only this character's corpus. `null` means the conversations with no
+     * character, which is a corpus too — a chat with no character should not
+     * surface a roleplay transcript.
+     *
+     * `undefined` means every corpus, which is what the Settings panel's own
+     * search does: it is a diagnostic, not a conversation.
+     */
+    characterId?: string | null
+  } = {},
 ): Promise<SearchOutcome> {
   const text = String(query ?? '').trim()
   if (!text) throw new Error('nothing to search for')
@@ -308,6 +331,10 @@ export async function searchVectors(
     // meta check above catches the configured case; this catches a half-cleared
     // store.
     if (row.dims !== queryVector.length) continue
+    // Per-character retrieval: a row belongs to the corpus of the character that
+    // was active when it was written. Rows indexed before this existed have no
+    // characterId, and are treated as the no-character corpus.
+    if (opts.characterId !== undefined && (row.characterId ?? null) !== opts.characterId) continue
     const similarity = dot(queryVector, row.vector)
     if (similarity > top) top = similarity
     if (similarity < (opts.floor ?? 0)) continue

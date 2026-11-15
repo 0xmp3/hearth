@@ -117,10 +117,11 @@ export default function ToolsDialog({
 
       <h4>Retrieval</h4>
       <p className="hint">
-        Indexing makes this conversation searchable from any other chat — including after its
-        beginning has been summarised away. It is not memory: memory is a fact you chose to keep,
-        this is the transcript, quoted back with a link to the message. The index is a cache, so
-        deleting it loses nothing but the time to rebuild it.
+        Indexing makes this conversation searchable from other chats with the same character — including
+        after its beginning has been summarised away. Each character has their own corpus, so a roleplay
+        chat never surfaces in a coding one. It is not memory: memory is a fact you chose to keep, this is
+        the transcript, quoted back with a link to the message. The index is a cache, so deleting it loses
+        nothing but the time to rebuild it.
       </p>
 
       <div className="row">

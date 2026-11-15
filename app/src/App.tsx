@@ -729,6 +729,7 @@ export default function App() {
       {dialog === 'memory' && (
         <MemoryDialog
           memories={h.memories}
+          characters={characters.characters}
           capturing={h.capturing}
           condensing={h.condensing}
           onClose={() => setDialog(null)}
