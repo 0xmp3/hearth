@@ -40,13 +40,12 @@ export const TOOLS: ToolDef[] = [
     name: 'remember',
     description:
       'Save a durable fact so it persists. Use it when something will still be true later: ' +
-      'preferences, ongoing projects, hardware, tools, constraints, decisions — or, with scope ' +
-      '"character", facts about the character you are talking to and their world: their history, ' +
-      'their setting, what they know. ' +
+      'preferences, ongoing projects, hardware, tools, constraints, decisions — or facts about ' +
+      'the character you are talking to and their world. ' +
       'Do not use it for greetings, one-off questions, or anything about yourself as an assistant. ' +
       'A system prompt or persona the user asks you to write for use somewhere else is not a fact — ' +
       'but a backstory the user asks you to write for the character you are talking to is: save its ' +
-      'key facts with scope "character". ' +
+      'key facts. ' +
       'Never save a placeholder: "the town mentioned in the travel chat" is a note that you do not ' +
       'know the town, not a fact. If you need the detail, search for it.',
     parameters: {
@@ -61,8 +60,10 @@ export const TOOLS: ToolDef[] = [
           type: 'string',
           enum: ['character', 'conversation'],
           description:
-            'character = true in every chat with this character, which is the default. ' +
-            'conversation = only true in this one.',
+            'character = remembered in every chat with whoever you are talking to — the character, ' +
+            'or the default assistant when no character is active. This is the default, and it is ' +
+            'right for almost everything, including facts about the user. ' +
+            'conversation = only true in this one chat.',
         },
       },
       required: ['text', 'scope'],
@@ -245,9 +246,11 @@ export function toolsFor(policy: ToolPolicy): ToolDef[] {
   return tools
 }
 
-const REMEMBER_GUIDANCE = `You have a tool called remember. Call it when the user states something durable: a preference, an ongoing project, hardware or software they use, a constraint, or a decision they have made. When a character is active, also call it for facts about that character or their world — their history, their setting, what they know — with scope "character", which is only injected when talking to them.
+const REMEMBER_GUIDANCE = `You have a tool called remember. Call it when the user states something durable: a preference, an ongoing project, hardware or software they use, a constraint, or a decision they have made. When a character is active, also call it for facts about that character or their world — their history, their setting, what they know.
 
-Save what the user tells you, and what they ask you to save. Do not save facts you worked out from the setting, from the character's prompt, or from your own writing — the app reads the transcript itself every few messages and captures those, and it does it better than you can mid-scene. Calling the tool for them only duplicates what it will find.
+Save what the user tells you, and what they ask you to save. Use scope "character" for anything that should still be true next time — including facts about the user themselves, which belong to the assistant they told them to. Use "conversation" only for something that would be wrong to carry into another chat.
+
+Do not save facts you worked out from the setting, from the character's prompt, or from your own writing — the app reads the transcript itself every few messages and captures those, and it does it better than you can mid-scene. Calling the tool for them only duplicates what it will find.
 
 The tool call is the offer. It queues the fact and the user sees a keep-or-forget chip, so do not ask permission before calling it and do not ask afterwards. Never say you have remembered it, and never ask whether they would like you to save it — by the time you ask, you have already called the tool, and the question is a lie. The chip is the confirmation, so you do not have to mention it at all: stay in character and carry on.
 

@@ -69,9 +69,10 @@ You are given the memories that already exist, each with an id, and a transcript
 Return only facts that are NEW or that REPLACE an existing one.
 
 "add" — new facts. Each is one short sentence, third person.
-  scope "character"    true in every chat with this character: their history, their nature,
-                       their setting, what they know, and what has happened to them. This is
-                       the default — a character remembers the scenarios they have been in.
+  scope "character"    remembered in every chat with whoever you are talking to — the character,
+                       or the default assistant when no character is active. Their history, their
+                       nature, their setting, what they know, what has happened to them, and what
+                       the user has told them about themselves. This is the default.
   scope "conversation" only true in this chat: a decision made here, or a detail that would be
                        wrong to carry into another scene.
 "remove" — ids from the existing list that are now wrong or superseded. Ids only, never text.
@@ -127,12 +128,16 @@ export async function extractMemories(
   const known = existing.map((m) => ({ id: m.id, text: m.text }))
 
   // Naming the character is what makes the "character" scope usable: without it
-  // the model has no idea which of the three scopes a fact about the setting
-  // belongs to, and it defaults to global — which is how a roleplay fact ends up
-  // in every conversation you ever have.
+  // the model has no idea which of the two scopes a fact about the setting
+  // belongs to, and it defaults to conversation — which is how a user's own
+  // interests ended up scoped to one chat.
+  //
+  // The no-character case used to say "do not use scope character", which was
+  // exactly backwards: with no character, character scope *is* the default
+  // assistant's memory, and it is where facts about the user belong.
   const who = characterName
     ? `\n\nYou are talking to the character "${characterName}". Facts about them or their world use scope "character".`
-    : '\n\nNo character is active, so do not use scope "character".'
+    : '\n\nNo character is active. Facts still use scope "character" — they belong to the default assistant and are remembered in every chat with it. Use "conversation" only for something that would be wrong to carry into another chat.'
 
   const res = await fetch(`${MANAGER}/api/chat`, {
     method: 'POST',
