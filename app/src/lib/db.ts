@@ -1,5 +1,19 @@
-// Persistence. No React, no network — just IndexedDB.
-// Two stores: conversations, and messages indexed by conversationId.
+// The library, through the manager.
+//
+// This file used to be IndexedDB. It is now a thin client over `data/hearth.db`,
+// because the browser cannot be the only copy of something the user cannot get
+// back: one "clear cookies and site data" and the whole library was gone.
+//
+// The function-per-operation shape is unchanged on purpose — every call site in
+// the app still reads `db.listMessages(id)` — so the storage layer swapped
+// underneath without the rest of the app noticing. What did change is that the
+// manager is now required to read your history: it is the thing holding it.
+//
+// Vectors are the exception and live in `store.ts`: they are a cache, and a wipe
+// should cost a re-index rather than a conversation.
+
+import { MANAGER } from './backend'
+import { clearVectors, countVectors, readLegacy } from './store'
 
 export type Conversation = {
   id: string
@@ -37,7 +51,7 @@ export type Conversation = {
    *
    * Opt-in per conversation because indexing costs an embedding pass and a
    * little disk, and a chat you do not care about should not pay for either. The
-   * vectors are a cache: turning this off deletes them and loses nothing.
+   * vectors are a cache: deleting the index loses nothing.
    */
   index?: boolean
 }
@@ -103,117 +117,45 @@ export type Message = {
   }
 }
 
-const DB_NAME = 'hearth'
-const DB_VERSION = 7
+// ---- transport -------------------------------------------------------------
 
-let handle: Promise<IDBDatabase> | null = null
-
-function open(): Promise<IDBDatabase> {
-  if (handle) return handle
-  handle = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains('conversations')) {
-        db.createObjectStore('conversations', { keyPath: 'id' })
-      }
-      if (!db.objectStoreNames.contains('messages')) {
-        const store = db.createObjectStore('messages', { keyPath: 'id' })
-        store.createIndex('conversationId', 'conversationId')
-      }
-      // v2. Guarded so an upgrade from v1 adds it without touching the rest.
-      // The store key still says "personas" from before the rename. Changing it
-      // would mean copying every record for no user-visible benefit, so the key
-      // is an implementation detail and the API speaks "characters".
-      if (!db.objectStoreNames.contains('personas')) {
-        db.createObjectStore('personas', { keyPath: 'id' })
-      }
-      // v3.
-      if (!db.objectStoreNames.contains('prompts')) {
-        db.createObjectStore('prompts', { keyPath: 'id' })
-      }
-      // v4. Small key-value store: directory handles, model notes.
-      if (!db.objectStoreNames.contains('meta')) {
-        db.createObjectStore('meta', { keyPath: 'key' })
-      }
-      // v5. Durable facts, written by the extraction pass or by hand.
-      if (!db.objectStoreNames.contains('memories')) {
-        const store = db.createObjectStore('memories', { keyPath: 'id' })
-        store.createIndex('scope', 'scope')
-      }
-      // v6. Who the user is, as an entity rather than a name in preferences.
-      if (!db.objectStoreNames.contains('profiles')) {
-        db.createObjectStore('profiles', { keyPath: 'id' })
-      }
-      // v7. Embedding vectors. Derived data: the message is the truth and every
-      // row here can be rebuilt from it, which is what makes an opt-in toggle
-      // safe. Keyed by message *and part*, because a long message is split.
-      if (!db.objectStoreNames.contains('vectors')) {
-        const store = db.createObjectStore('vectors', { keyPath: 'id' })
-        store.createIndex('conversationId', 'conversationId')
-        store.createIndex('messageId', 'messageId')
-      }
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-  return handle
+/**
+ * One call to the manager's store.
+ *
+ * A manager that is not running is not an empty library, and saying so is the
+ * whole point of this error: the data is on disk, and the fix is to start the
+ * thing that reads it.
+ */
+async function call<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(`${MANAGER}/api/db`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },
+      body: JSON.stringify({ op, args }),
+    })
+  } catch {
+    throw new Error(
+      'the manager is not running, so the library cannot be read — it is on disk in data/hearth.db',
+    )
+  }
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((body as { error?: string }).error ?? `store ${res.status}`)
+  return (body as { result: T }).result
 }
 
-function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return open().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const t = db.transaction(store, mode)
-        const req = fn(t.objectStore(store))
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => reject(req.error)
-      }),
-  )
+// ---- conversations ---------------------------------------------------------
+
+export function listConversations(): Promise<Conversation[]> {
+  return call<Conversation[]>('listConversations')
 }
 
-export async function listConversations(): Promise<Conversation[]> {
-  const all = await tx<Conversation[]>('conversations', 'readonly', (s) => s.getAll())
-  return all.sort((a, b) => {
-    const ap = a.pinnedAt ?? 0
-    const bp = b.pinnedAt ?? 0
-    if (ap && bp) return bp - ap
-    if (ap) return -1
-    if (bp) return 1
-    return b.updatedAt - a.updatedAt
-  })
+export function putConversation(c: Conversation): Promise<string> {
+  return call<string>('putConversation', { conversation: c })
 }
 
-export function putConversation(c: Conversation): Promise<IDBValidKey> {
-  return tx('conversations', 'readwrite', (s) => s.put(c))
-}
-
-export async function deleteConversation(id: string): Promise<void> {
-  const db = await open()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'messages', 'vectors'], 'readwrite')
-    t.objectStore('conversations').delete(id)
-    const idx = t.objectStore('messages').index('conversationId')
-    const cursorReq = idx.openKeyCursor(IDBKeyRange.only(id))
-    cursorReq.onsuccess = () => {
-      const cursor = cursorReq.result
-      if (!cursor) return
-      t.objectStore('messages').delete(cursor.primaryKey)
-      cursor.continue()
-    }
-    // Vectors are derived, but an orphan is still a leak: the index would keep
-    // returning chunks whose message no longer exists.
-    const vIdx = t.objectStore('vectors').index('conversationId')
-    const vReq = vIdx.openKeyCursor(IDBKeyRange.only(id))
-    vReq.onsuccess = () => {
-      const cursor = vReq.result
-      if (!cursor) return
-      t.objectStore('vectors').delete(cursor.primaryKey)
-      cursor.continue()
-    }
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-  })
+export function deleteConversation(id: string): Promise<void> {
+  return call<void>('deleteConversation', { id })
 }
 
 /**
@@ -224,86 +166,31 @@ export async function deleteConversation(id: string): Promise<void> {
  * conversation list again", not "factory reset" — a distinction worth keeping
  * because the destructive version is one word away and much harder to undo.
  */
-export async function clearConversations(): Promise<{
-  conversations: number
-  messages: number
-  memories: number
-}> {
-  const db = await open()
-  const count = (store: string) =>
-    new Promise<number>((resolve, reject) => {
-      const req = db.transaction(store, 'readonly').objectStore(store).count()
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
-    })
-
-  const [conversations, messages, memories] = await Promise.all([
-    count('conversations'),
-    count('messages'),
-    count('memories'),
-  ])
-
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'messages', 'memories', 'vectors'], 'readwrite')
-    t.objectStore('conversations').clear()
-    t.objectStore('messages').clear()
-    // Every vector belongs to a message, so clearing the messages clears the
-    // index with them.
-    t.objectStore('vectors').clear()
-    // Only conversation-scoped memories: a summary belongs to its thread, a fact
-    // about the user does not.
-    const idx = t.objectStore('memories').index('scope')
-    const cursorReq = idx.openKeyCursor(IDBKeyRange.only('conversation'))
-    cursorReq.onsuccess = () => {
-      const cursor = cursorReq.result
-      if (!cursor) return
-      t.objectStore('memories').delete(cursor.primaryKey)
-      cursor.continue()
-    }
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-  })
-
-  return { conversations, messages, memories }
+export function clearConversations(): Promise<{ conversations: number; messages: number; memories: number }> {
+  return call('clearConversations')
 }
 
-export async function listMessages(conversationId: string): Promise<Message[]> {
-  const db = await open()
-  return new Promise((resolve, reject) => {
-    const t = db.transaction('messages', 'readonly')
-    const req = t.objectStore('messages').index('conversationId').getAll(IDBKeyRange.only(conversationId))
-    req.onsuccess = () => resolve((req.result as Message[]).sort((a, b) => a.createdAt - b.createdAt))
-    req.onerror = () => reject(req.error)
-  })
+// ---- messages --------------------------------------------------------------
+
+export function listMessages(conversationId: string): Promise<Message[]> {
+  return call<Message[]>('listMessages', { conversationId })
 }
 
-export function putMessage(m: Message): Promise<IDBValidKey> {
-  return tx('messages', 'readwrite', (s) => s.put(m))
+export function putMessage(m: Message): Promise<string> {
+  return call<string>('putMessage', { message: m })
 }
 
 export function getMessage(id: string): Promise<Message | undefined> {
-  return tx<Message | undefined>('messages', 'readonly', (s) => s.get(id))
+  return call<Message | null>('getMessage', { id }).then((m) => m ?? undefined)
 }
 
-export async function deleteMessage(id: string): Promise<void> {
-  const db = await open()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['messages', 'vectors'], 'readwrite')
-    t.objectStore('messages').delete(id)
-    // A message's vectors are derived from it, so they go with it. This is the
-    // single choke point for regenerate and edit-with-fork, which is why the
-    // cleanup lives here rather than in each caller.
-    const idx = t.objectStore('vectors').index('messageId')
-    const req = idx.openKeyCursor(IDBKeyRange.only(id))
-    req.onsuccess = () => {
-      const cursor = req.result
-      if (!cursor) return
-      t.objectStore('vectors').delete(cursor.primaryKey)
-      cursor.continue()
-    }
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-  })
+/** Batch read, so a search does not cost one round trip per hit. */
+export function getMessages(ids: string[]): Promise<Message[]> {
+  return call<Message[]>('getMessages', { ids })
+}
+
+export function deleteMessage(id: string): Promise<void> {
+  return call<void>('deleteMessage', { id })
 }
 
 export type SearchHit = {
@@ -314,37 +201,15 @@ export type SearchHit = {
   createdAt: number
 }
 
-// Linear scan over every message. At a few thousand messages this is
-// instant; if it ever isn't, that's the signal to add an FTS index.
-export async function searchMessages(query: string, limit = 20): Promise<SearchHit[]> {
-  const q = query.trim().toLowerCase()
-  if (!q) return []
-
-  const db = await open()
-  const all = await new Promise<Message[]>((resolve, reject) => {
-    const t = db.transaction('messages', 'readonly')
-    const req = t.objectStore('messages').getAll()
-    req.onsuccess = () => resolve(req.result as Message[])
-    req.onerror = () => reject(req.error)
-  })
-
-  const hits: SearchHit[] = []
-  for (const m of all) {
-    const idx = m.content.toLowerCase().indexOf(q)
-    if (idx === -1) continue
-    const start = Math.max(0, idx - 40)
-    const end = Math.min(m.content.length, idx + q.length + 60)
-    hits.push({
-      conversationId: m.conversationId,
-      messageId: m.id,
-      role: m.role,
-      snippet: (start > 0 ? '…' : '') + m.content.slice(start, end).replace(/\s+/g, ' ').trim(),
-      createdAt: m.createdAt,
-    })
-  }
-
-  return hits.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit)
+export function searchMessages(query: string, limit = 20): Promise<SearchHit[]> {
+  return call<SearchHit[]>('searchMessages', { query, limit })
 }
+
+export function countMessages(): Promise<number> {
+  return call<number>('countMessages')
+}
+
+// ---- characters, prompts, profiles ----------------------------------------
 
 export type Character = {
   id: string
@@ -378,10 +243,6 @@ export type Character = {
  * adds a slow drift on top. It is a *render-time* transform: nothing is stored
  * differently, the prompt is untouched, the text the model sees is unchanged,
  * and turning it off restores the plain reply instantly.
- *
- * That is the whole reason this is cheap. It reads a decision the model already
- * made — it bolded the phrase it thought mattered — instead of asking it to make
- * a new one it has no way to judge.
  */
 export type TextStyle = 'off' | 'colour' | 'expressive'
 
@@ -427,32 +288,14 @@ export function makeBackup(
   }
 }
 
-export async function exportAll(): Promise<Backup> {
-  const db = await open()
-  const read = <T,>(store: string) =>
-    new Promise<T[]>((resolve, reject) => {
-      const t = db.transaction(store, 'readonly')
-      const req = t.objectStore(store).getAll()
-      req.onsuccess = () => resolve(req.result as T[])
-      req.onerror = () => reject(req.error)
-    })
-
-  const [conversations, messages, characters, prompts, memories, profiles] = await Promise.all([
-    read<Conversation>('conversations'),
-    read<Message>('messages'),
-    read<Character>('personas'),
-    read<Prompt>('prompts'),
-    read<Memory>('memories'),
-    read<Profile>('profiles'),
-  ])
-
-  return makeBackup(conversations, messages, characters, prompts, memories, profiles)
+export function exportAll(): Promise<Backup> {
+  return call<Backup>('exportAll')
 }
 
 // Merge, never replace: restoring into an empty database brings everything
 // back, and restoring into a populated one overwrites by id instead of
 // destroying whatever else is there.
-export async function importAll(
+export function importAll(
   backup: Backup,
   only?: string[],
 ): Promise<{
@@ -463,43 +306,7 @@ export async function importAll(
   memories: number
   profiles: number
 }> {
-  const conversations = only ? backup.conversations.filter((c) => only.includes(c.id)) : backup.conversations
-  const ids = new Set(conversations.map((c) => c.id))
-  const messages = backup.messages.filter((m) => ids.has(m.conversationId))
-  const characters = backup.characters ?? []
-  const prompts = backup.prompts ?? []
-  // Global and character memories are not tied to a conversation, so a partial
-  // restore keeps them. Conversation-scoped ones follow their conversation.
-  const memories = (backup.memories ?? []).filter(
-    (m) => m.scope !== 'conversation' || !m.ownerId || ids.has(m.ownerId),
-  )
-  // Profiles are about the person, so a partial restore keeps all of them.
-  const profiles = backup.profiles ?? []
-
-  const db = await open()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(
-      ['conversations', 'messages', 'personas', 'prompts', 'memories', 'profiles'],
-      'readwrite',
-    )
-    for (const c of conversations) t.objectStore('conversations').put(c)
-    for (const m of messages) t.objectStore('messages').put(m)
-    for (const p of characters) t.objectStore('personas').put(p)
-    for (const p of prompts) t.objectStore('prompts').put(p)
-    for (const m of memories) t.objectStore('memories').put(m)
-    for (const p of profiles) t.objectStore('profiles').put(p)
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-  })
-
-  return {
-    conversations: conversations.length,
-    messages: messages.length,
-    characters: characters.length,
-    prompts: prompts.length,
-    memories: memories.length,
-    profiles: profiles.length,
-  }
+  return call('importAll', { backup, only })
 }
 
 export type StatPoint = {
@@ -514,73 +321,40 @@ export type StatPoint = {
 }
 
 // Only the numbers, not the text: the graph never needs message bodies.
-export async function listStatPoints(): Promise<StatPoint[]> {
-  const db = await open()
-  const all = await new Promise<Message[]>((resolve, reject) => {
-    const t = db.transaction('messages', 'readonly')
-    const req = t.objectStore('messages').getAll()
-    req.onsuccess = () => resolve(req.result as Message[])
-    req.onerror = () => reject(req.error)
-  })
-
-  return all
-    .filter((m) => m.stats?.tokPerSec)
-    .map((m) => ({
-      model: m.stats!.model ?? 'unknown',
-      tokPerSec: m.stats!.tokPerSec!,
-      promptTokPerSec: m.stats!.promptTokPerSec,
-      ttftMs: m.stats!.ttftMs,
-      completionTokens: m.stats!.completionTokens,
-      promptTokens: m.stats!.promptTokens,
-      cacheN: m.stats!.cacheN,
-      createdAt: m.createdAt,
-    }))
-    .sort((a, b) => a.createdAt - b.createdAt)
+export function listStatPoints(): Promise<StatPoint[]> {
+  return call<StatPoint[]>('listStatPoints')
 }
 
-export async function countMessages(): Promise<number> {
-  const db = await open()
-  return new Promise((resolve, reject) => {
-    const t = db.transaction('messages', 'readonly')
-    const req = t.objectStore('messages').count()
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
+export function listCharacters(): Promise<Character[]> {
+  return call<Character[]>('listCharacters')
 }
 
-export async function listCharacters(): Promise<Character[]> {
-  const all = await tx<Character[]>('personas', 'readonly', (s) => s.getAll())
-  return all.sort((a, b) => a.createdAt - b.createdAt)
+export function putCharacter(p: Character): Promise<string> {
+  return call<string>('putCharacter', { character: p })
 }
 
-export function putCharacter(p: Character): Promise<IDBValidKey> {
-  return tx('personas', 'readwrite', (s) => s.put(p))
+export function deleteCharacter(id: string): Promise<void> {
+  return call<void>('deleteCharacter', { id })
 }
 
-export async function deleteCharacter(id: string): Promise<void> {
-  await tx('personas', 'readwrite', (s) => s.delete(id))
+export function getMeta<T>(key: string): Promise<T | undefined> {
+  return call<T | null>('getMeta', { key }).then((v) => v ?? undefined)
 }
 
-export async function getMeta<T>(key: string): Promise<T | undefined> {
-  const row = await tx<{ key: string; value: T } | undefined>('meta', 'readonly', (s) => s.get(key))
-  return row?.value
+export function setMeta<T>(key: string, value: T): Promise<void> {
+  return call<void>('setMeta', { key, value })
 }
 
-export async function setMeta<T>(key: string, value: T): Promise<void> {
-  await tx('meta', 'readwrite', (s) => s.put({ key, value }))
+export function listPrompts(): Promise<Prompt[]> {
+  return call<Prompt[]>('listPrompts')
 }
 
-export async function listPrompts(): Promise<Prompt[]> {
-  const all = await tx<Prompt[]>('prompts', 'readonly', (s) => s.getAll())
-  return all.sort((a, b) => a.name.localeCompare(b.name))
+export function putPrompt(p: Prompt): Promise<string> {
+  return call<string>('putPrompt', { prompt: p })
 }
 
-export function putPrompt(p: Prompt): Promise<IDBValidKey> {
-  return tx('prompts', 'readwrite', (s) => s.put(p))
-}
-
-export async function deletePrompt(id: string): Promise<void> {
-  await tx('prompts', 'readwrite', (s) => s.delete(id))
+export function deletePrompt(id: string): Promise<void> {
+  return call<void>('deletePrompt', { id })
 }
 
 // ---- profiles ------------------------------------------------------------
@@ -598,17 +372,16 @@ export type Profile = {
   createdAt: number
 }
 
-export async function listProfiles(): Promise<Profile[]> {
-  const all = await tx<Profile[]>('profiles', 'readonly', (s) => s.getAll())
-  return all.sort((a, b) => a.createdAt - b.createdAt)
+export function listProfiles(): Promise<Profile[]> {
+  return call<Profile[]>('listProfiles')
 }
 
-export function putProfile(p: Profile): Promise<IDBValidKey> {
-  return tx('profiles', 'readwrite', (s) => s.put(p))
+export function putProfile(p: Profile): Promise<string> {
+  return call<string>('putProfile', { profile: p })
 }
 
-export function deleteProfile(id: string): Promise<undefined> {
-  return tx('profiles', 'readwrite', (s) => s.delete(id))
+export function deleteProfile(id: string): Promise<void> {
+  return call<void>('deleteProfile', { id })
 }
 
 // ---- memories ------------------------------------------------------------
@@ -643,151 +416,104 @@ export type Memory = {
   pending?: boolean
 }
 
-export async function listMemories(): Promise<Memory[]> {
-  const all = await tx<Memory[]>('memories', 'readonly', (s) => s.getAll())
-  return all.sort((a, b) => a.createdAt - b.createdAt)
+export function listMemories(): Promise<Memory[]> {
+  return call<Memory[]>('listMemories')
 }
 
-export function putMemory(m: Memory): Promise<IDBValidKey> {
-  return tx('memories', 'readwrite', (s) => s.put(m))
+export function putMemory(m: Memory): Promise<string> {
+  return call<string>('putMemory', { memory: m })
 }
 
-export function deleteMemory(id: string): Promise<undefined> {
-  return tx('memories', 'readwrite', (s) => s.delete(id))
+export function deleteMemory(id: string): Promise<void> {
+  return call<void>('deleteMemory', { id })
 }
 
-// ---- vectors -------------------------------------------------------------
-
-/**
- * One embedded part of one message.
- *
- * The message is the truth; this is a cache keyed to it. `hash` is of the text
- * that was embedded, so an edited message is re-embedded and an unchanged one is
- * skipped — without it, every re-index would re-embed the whole conversation.
- */
-export type VectorRow = {
-  /** `${messageId}` or `${messageId}#${part}` for a long message. */
-  id: string
-  messageId: string
-  conversationId: string
-  part: number
-  hash: string
-  chars: number
-  /** Which embedding model produced this vector, and at what width. */
-  model: string
-  dims: number
-  /** L2-normalised on write, so a dot product is the cosine. */
-  vector: Float32Array
-  createdAt: number
-}
-
-export async function putVectors(rows: VectorRow[]): Promise<void> {
-  if (!rows.length) return
-  const db = await open()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction('vectors', 'readwrite')
-    for (const row of rows) t.objectStore('vectors').put(row)
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-    t.onabort = () => reject(t.error)
-  })
-}
-
-export async function listVectors(conversationId?: string): Promise<VectorRow[]> {
-  const db = await open()
-  if (!conversationId) {
-    return new Promise((resolve, reject) => {
-      const t = db.transaction('vectors', 'readonly')
-      const req = t.objectStore('vectors').getAll()
-      req.onsuccess = () => resolve(req.result as VectorRow[])
-      req.onerror = () => reject(req.error)
-    })
-  }
-  return new Promise((resolve, reject) => {
-    const t = db.transaction('vectors', 'readonly')
-    const req = t.objectStore('vectors').index('conversationId').getAll(IDBKeyRange.only(conversationId))
-    req.onsuccess = () => resolve(req.result as VectorRow[])
-    req.onerror = () => reject(req.error)
-  })
-}
-
-export async function deleteVectorsForMessage(messageId: string): Promise<void> {
-  const db = await open()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction('vectors', 'readwrite')
-    const req = t.objectStore('vectors').index('messageId').openKeyCursor(IDBKeyRange.only(messageId))
-    req.onsuccess = () => {
-      const cursor = req.result
-      if (!cursor) return
-      t.objectStore('vectors').delete(cursor.primaryKey)
-      cursor.continue()
-    }
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-  })
-}
-
-export async function deleteVectorsForConversation(conversationId: string): Promise<void> {
-  const db = await open()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction('vectors', 'readwrite')
-    const req = t.objectStore('vectors').index('conversationId').openKeyCursor(IDBKeyRange.only(conversationId))
-    req.onsuccess = () => {
-      const cursor = req.result
-      if (!cursor) return
-      t.objectStore('vectors').delete(cursor.primaryKey)
-      cursor.continue()
-    }
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-  })
-}
-
-export async function countVectors(): Promise<number> {
-  const db = await open()
-  return new Promise((resolve, reject) => {
-    const t = db.transaction('vectors', 'readonly')
-    const req = t.objectStore('vectors').count()
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-export async function clearVectors(): Promise<void> {
-  await tx('vectors', 'readwrite', (s) => s.clear())
-}
+// ---- indexes -------------------------------------------------------------
 
 /**
  * Delete every vector and unset every conversation's index flag.
  *
  * The messages are untouched — this is the cache, not the transcript — which is
  * why it is the one bulk action that needs no backup: nothing is lost but the
- * time to rebuild.
+ * time to rebuild. The vectors are in the browser and the flags are on disk, so
+ * this is the one operation that spans both stores.
  */
 export async function clearAllIndexes(): Promise<{ vectors: number; conversations: number }> {
-  const db = await open()
   const vectors = await countVectors()
-  let conversations = 0
+  const conversations = await listConversations()
+  const indexed = conversations.filter((c) => c.index)
+  await clearVectors()
+  for (const conv of indexed) await putConversation({ ...conv, index: false })
+  return { vectors, conversations: indexed.length }
+}
 
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(['conversations', 'vectors'], 'readwrite')
-    t.objectStore('vectors').clear()
-    const req = t.objectStore('conversations').openCursor()
-    req.onsuccess = () => {
-      const cursor = req.result
-      if (!cursor) return
-      const conv = cursor.value as Conversation
-      if (conv.index) {
-        conversations += 1
-        cursor.update({ ...conv, index: false })
-      }
-      cursor.continue()
-    }
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-  })
+// ---- migration ------------------------------------------------------------
 
-  return { vectors, conversations }
+export type MigrationResult = {
+  migrated: boolean
+  counts?: {
+    conversations: number
+    messages: number
+    characters: number
+    prompts: number
+    memories: number
+    profiles: number
+  }
+}
+
+/**
+ * Move the pre-SQLite library out of the browser, once.
+ *
+ * Gated on a flag in the *manager's* database rather than on "is it empty": a
+ * user who deletes every conversation would otherwise have them all come back on
+ * the next boot, which is the worst kind of resurrection bug.
+ *
+ * The browser copy is left in place. It costs nothing, and if this ever needs to
+ * run again the source is still there.
+ */
+export async function migrateFromBrowser(): Promise<MigrationResult> {
+  const done = await getMeta<{ at: number }>('migrated.indexeddb')
+  if (done) return { migrated: false }
+
+  const legacy = await readLegacy()
+  const total =
+    legacy.conversations.length +
+    legacy.messages.length +
+    legacy.characters.length +
+    legacy.prompts.length +
+    legacy.memories.length +
+    legacy.profiles.length
+
+  let counts: MigrationResult['counts']
+  if (total > 0) {
+    counts = await importAll({
+      format: 'hearth-backup',
+      version: 5,
+      exportedAt: new Date().toISOString(),
+      conversations: legacy.conversations as Conversation[],
+      messages: legacy.messages as Message[],
+      characters: legacy.characters as Character[],
+      prompts: legacy.prompts as Prompt[],
+      memories: legacy.memories as Memory[],
+      profiles: legacy.profiles as Profile[],
+    })
+  }
+
+  await setMeta('migrated.indexeddb', { at: Date.now(), counts: counts ?? null })
+  return { migrated: total > 0, counts }
+}
+
+/** Where the library lives, and how much is in it. */
+export function dbStats(): Promise<{
+  path: string
+  conversations: number
+  messages: number
+  characters: number
+  prompts: number
+  profiles: number
+  memories: number
+}> {
+  return call('stats')
 }
 
 export function newId(): string {

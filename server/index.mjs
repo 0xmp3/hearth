@@ -31,6 +31,7 @@ import * as tts from './tts/index.mjs'
 import * as embed from './embed/index.mjs'
 import * as rerank from './rerank/index.mjs'
 import * as rerankDownload from './rerank/download.mjs'
+import * as store from './db/index.mjs'
 import * as ws from './workspace/files.mjs'
 import {
   BIN,
@@ -730,6 +731,32 @@ const server = createServer((req, res) => {
     return
   }
 
+  // ---- the library --------------------------------------------------------
+  //
+  // The app's data lives in data/hearth.db, not in the browser. One endpoint with
+  // an operation name, because the client already had a function per operation
+  // and only the transport needed to change.
+
+  if (req.method === 'GET' && url.pathname === '/api/db') {
+    try {
+      json(res, 200, store.run(DATA, 'stats'))
+    } catch (err) {
+      json(res, 500, { error: err.message })
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/db') {
+    readBody(req, 50e6)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        if (!body.op) throw new Error('no operation')
+        json(res, 200, { result: store.run(DATA, body.op, body.args ?? {}) })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
   // ---- embeddings ---------------------------------------------------------
   //
   // Same shape as speech: the manager owns a second llama-server, started on
@@ -1069,6 +1096,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
     tts.shutdown()
     embed.shutdown()
     rerank.shutdown()
+    store.close()
     process.exit(0)
   })
 }
@@ -1080,6 +1108,7 @@ process.on('exit', () => {
   tts.shutdown()
   embed.shutdown()
   rerank.shutdown()
+  store.close()
 })
 
 // The net under every route. A rejected promise nobody awaited used to end the

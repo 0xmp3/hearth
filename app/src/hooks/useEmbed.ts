@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { manager, type EmbedState, type RerankState } from '../lib/backend'
-import { countVectors } from '../lib/db'
+import { countVectors } from '../lib/store'
 
 export function useEmbed() {
   const [embed, setEmbed] = useState<EmbedState | null>(null)

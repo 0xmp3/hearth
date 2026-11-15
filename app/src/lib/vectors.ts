@@ -22,20 +22,8 @@
 // everything or nothing. That number comes from the test corpus in docs/rag.md.
 
 import * as db from './db'
+import * as store from './store'
 import { manager } from './backend'
-
-/** One meta record, so a half-built index cannot claim to be the whole one. */
-export const VECTOR_META_KEY = 'vectors'
-
-export type VectorMeta = {
-  /** The model *path*, because that is what the manager resolves and loads. */
-  model: string
-  dims: number
-  /** The task prefixes the manager applied. A change invalidates every vector. */
-  prefix: string
-  queryPrefix: string
-  builtAt: number
-}
 
 /** A message part is embedded whole below this; above it, split on paragraphs. */
 const MAX_CHUNK = 1200
@@ -152,7 +140,7 @@ export async function indexConversation(
   if (!state.enabled) throw new Error('indexing is off — turn it on in Settings')
   if (!state.ready) throw new Error('no embedding model is set')
 
-  const meta = await db.getMeta<VectorMeta>(VECTOR_META_KEY)
+  const meta = await store.getVectorMeta()
   const changedModel = Boolean(meta && meta.model !== state.model.path)
   const changedPrefix = Boolean(
     meta && (meta.prefix !== state.prefix || meta.queryPrefix !== state.queryPrefix),
@@ -167,11 +155,11 @@ export async function indexConversation(
   }
   // A forced rebuild starts clean: comparing vectors from two models is not a
   // weaker answer, it is a meaningless one.
-  if (changedModel) await db.clearVectors()
+  if (changedModel) await store.clearVectors()
 
   const messages = await db.listMessages(conversationId)
   const existing = new Map<string, Map<number, string>>()
-  for (const row of await db.listVectors(conversationId)) {
+  for (const row of await store.listVectors(conversationId)) {
     const parts = existing.get(row.messageId) ?? new Map<number, string>()
     parts.set(row.part, row.hash)
     existing.set(row.messageId, parts)
@@ -198,7 +186,7 @@ export async function indexConversation(
   // Anything being written is written whole: a message that shrank would
   // otherwise leave its old tail retrievable, pointing at text that is gone.
   const rewritten = new Set(plan.map((item) => item.message.id))
-  for (const id of rewritten) await db.deleteVectorsForMessage(id)
+  for (const id of rewritten) await store.deleteVectorsForMessage(id)
 
   let dims = meta?.dims ?? 0
   let written = 0
@@ -208,7 +196,7 @@ export async function indexConversation(
     const result = await manager.embed(batch.map((item) => item.text))
     dims = result.dims
     const now = Date.now()
-    const rows: db.VectorRow[] = batch.map((item, n) => ({
+    const rows: store.VectorRow[] = batch.map((item, n) => ({
       id: item.part ? `${item.message.id}#${item.part}` : item.message.id,
       messageId: item.message.id,
       conversationId,
@@ -220,12 +208,12 @@ export async function indexConversation(
       vector: normalise(result.vectors[n]),
       createdAt: now,
     }))
-    await db.putVectors(rows)
+    await store.putVectors(rows)
     written += rows.length
   }
 
   if (written || !meta) {
-    await db.setMeta<VectorMeta>(VECTOR_META_KEY, {
+    await store.setVectorMeta({
       model: state.model.path,
       dims,
       prefix: state.prefix,
@@ -302,7 +290,7 @@ export async function searchVectors(
   const state = await manager.embedState()
   if (!state.enabled) throw new Error('indexing is off — turn it on in Settings')
 
-  const meta = await db.getMeta<VectorMeta>(VECTOR_META_KEY)
+  const meta = await store.getVectorMeta()
   if (!meta) throw new Error('nothing is indexed yet')
   if (meta.model !== state.model.path) {
     throw new Error('the index was built with a different embedding model — rebuild it')
@@ -311,8 +299,8 @@ export async function searchVectors(
   const embedded = await manager.embed([text], 'query')
   const queryVector = normalise(embedded.vectors[0])
 
-  const rows = await db.listVectors(opts.conversationId)
-  const scored: { row: db.VectorRow; similarity: number }[] = []
+  const rows = await store.listVectors(opts.conversationId)
+  const scored: { row: store.VectorRow; similarity: number }[] = []
   let top = 0
 
   for (const row of rows) {
@@ -340,10 +328,14 @@ export async function searchVectors(
 
   // The text is fetched here rather than stored with the vector: the message is
   // the truth, and a vector row that outlived an edit would otherwise return
-  // text that is no longer in the transcript.
+  // text that is no longer in the transcript. One batch call, because the store
+  // is now on the other side of an HTTP request.
+  const found = await db.getMessages(shortlist.map(({ row }) => row.messageId))
+  const byId = new Map(found.map((m) => [m.id, m]))
+
   const hits: VectorHit[] = []
   for (const { row, similarity } of shortlist) {
-    const message = await db.getMessage(row.messageId)
+    const message = byId.get(row.messageId)
     if (!message) continue
     hits.push({
       messageId: row.messageId,
@@ -404,8 +396,8 @@ export type VectorStats = {
 }
 
 export async function vectorStats(): Promise<VectorStats> {
-  const rows = await db.listVectors()
-  const meta = await db.getMeta<VectorMeta>(VECTOR_META_KEY)
+  const rows = await store.listVectors()
+  const meta = await store.getVectorMeta()
   const conversations = new Set(rows.map((row) => row.conversationId))
   return {
     count: rows.length,
@@ -418,5 +410,5 @@ export async function vectorStats(): Promise<VectorStats> {
 
 /** Turn a conversation's toggle off: the vectors go, the messages stay. */
 export async function dropConversationIndex(conversationId: string): Promise<void> {
-  await db.deleteVectorsForConversation(conversationId)
+  await store.deleteVectorsForConversation(conversationId)
 }

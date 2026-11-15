@@ -91,6 +91,22 @@ export function useHearth(
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      // The library lives on disk now, so the first boot after the change has to
+      // move what the old version left in the browser. It runs before the first
+      // read, and it is a no-op on every boot after this one.
+      try {
+        const moved = await db.migrateFromBrowser()
+        if (moved.migrated && moved.counts) {
+          console.log(
+            `[hearth] moved ${moved.counts.conversations} conversations and ${moved.counts.messages} messages out of the browser`,
+          )
+        }
+      } catch (err) {
+        // A failed migration must not stop the app: the browser copy is still
+        // there, and the next boot will try again.
+        console.warn('[hearth] migration skipped:', (err as Error).message)
+      }
+
       // History first, and independently of the backend. A model server that is
       // not running must not hide the conversations that are already on disk —
       // that is the difference between "the engine is off" and "my chats are

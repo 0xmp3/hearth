@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { themes, DEFAULT_THEME } from './themes'
 import { loadFileThemes, type ThemeProblem } from './load'
+import { getMeta, setMeta } from '../lib/db'
 import type { Theme } from './types'
 
 const STORAGE_KEY = 'hearth.theme'
@@ -82,6 +83,22 @@ export function useTheme() {
     }
   }, [])
 
+  // The chosen theme is a setting, so it lives on disk like the rest. The cache
+  // above makes the first paint right; this makes the choice survive a browser
+  // wipe, at the cost of one frame in the default theme.
+  useEffect(() => {
+    let cancelled = false
+    void getMeta<{ id: string }>('theme')
+      .then((saved) => {
+        if (cancelled || !saved?.id) return
+        setThemeId(saved.id)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const theme = registry[themeId] ?? registry[DEFAULT_THEME]
 
   useEffect(() => {
@@ -91,6 +108,7 @@ export function useTheme() {
     } catch {
       // not fatal: the theme still applies for this session
     }
+    void setMeta('theme', { id: theme.id }).catch(() => {})
   }, [theme])
 
   return {

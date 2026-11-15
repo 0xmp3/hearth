@@ -1,9 +1,19 @@
-// App preferences that are not per-conversation. Kept in localStorage:
-// they are settings, not data, and a broken read must never break the app.
+// App preferences that are not per-conversation.
+//
+// These used to live only in localStorage, which meant "clear cookies and site
+// data" reset the theme, your name, the reply budget and the layout. They are
+// settings, not data, but losing them is still losing something you chose.
+//
+// So the copy on disk is the truth and localStorage is a **cache**: the first
+// paint reads the cache synchronously (no flash of defaults), then the manager's
+// copy arrives and wins. A manager that is not running leaves the cache in place,
+// which is the right failure — the app still opens with your settings.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getMeta, setMeta } from '../lib/db'
 
 const KEY = 'hearth.prefs'
+const META = 'prefs'
 
 type Prefs = {
   showReasoning: boolean
@@ -67,17 +77,45 @@ function load(): Prefs {
   }
 }
 
+function cache(prefs: Prefs) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(prefs))
+  } catch {
+    // A preference that cannot be cached is not fatal: the disk copy is the one
+    // that matters.
+  }
+}
+
 export function usePrefs() {
   const [prefs, setPrefs] = useState<Prefs>(load)
+
+  // The disk copy wins once it arrives. Merged over the cache rather than
+  // replacing it, so a preference added in a later version keeps its default
+  // instead of vanishing.
+  useEffect(() => {
+    let cancelled = false
+    void getMeta<Partial<Prefs>>(META)
+      .then((disk) => {
+        if (cancelled || !disk) return
+        setPrefs((current) => {
+          const next = { ...current, ...disk }
+          cache(next)
+          return next
+        })
+      })
+      .catch(() => {
+        // No manager: the cache is all there is, and it is already loaded.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function update(patch: Partial<Prefs>) {
     setPrefs((prev) => {
       const next = { ...prev, ...patch }
-      try {
-        localStorage.setItem(KEY, JSON.stringify(next))
-      } catch {
-        // preference only; not fatal
-      }
+      cache(next)
+      void setMeta(META, next).catch(() => {})
       return next
     })
   }
