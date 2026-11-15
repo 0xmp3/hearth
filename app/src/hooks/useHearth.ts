@@ -182,7 +182,13 @@ export function useHearth(
     // background passes after the last render must be in this request.
     const stored = await db.listMemories()
     const summary = currentSummary(stored, conv.id)
-    const memory = buildMemoryBlock(stored, conv.id, conv.characterId ?? null)
+    // The *resolved* character, not the raw field. A conversation that inherits
+    // the active character stores `undefined`, and `undefined ?? null` is null —
+    // which matched no character fact at all, so every character memory was
+    // saved, listed, and never injected. The character prompt was applied
+    // (resolveCharacter handles the inherit case) while its memories were not,
+    // which is why the chat still looked right: the scenario carried the setting.
+    const memory = buildMemoryBlock(stored, conv.id, resolveCharacter?.(conv.characterId)?.id ?? null)
     // Tools are on for every turn, so the guidance is always relevant.
     const system = [
       // First, because it frames everything after it — who you are, who the
