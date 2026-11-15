@@ -70,6 +70,11 @@ export const agentTurn: TurnDriver = async (ctx) => {
   let wrote = false
   let fresh = false
   let tail = ''
+  // The text this round produced, kept so the assistant turn can be pushed back
+  // with it. Pushing an empty content string loses what the model already said,
+  // and on the next round it has no record of having said it — so it says it
+  // again. That is the duplicated answer after a tool call.
+  let roundText = ''
   // The same rule for the thinking stream: it is also appended across rounds,
   // and "Read it.That's all." is the same bug in a different field.
   let thought = false
@@ -81,6 +86,7 @@ export const agentTurn: TurnDriver = async (ctx) => {
     if (!fresh && wrote && !tail.endsWith('\n')) ctx.append('content', '\n\n')
     fresh = true
     wrote = true
+    roundText += text
     tail = (tail + text).slice(-2)
     ctx.append('content', text)
   }
@@ -95,6 +101,7 @@ export const agentTurn: TurnDriver = async (ctx) => {
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     fresh = false
     freshThought = false
+    roundText = ''
     const result = await streamChat({
       baseUrl: BASE_URL,
       model: ctx.model,
@@ -113,6 +120,15 @@ export const agentTurn: TurnDriver = async (ctx) => {
 
     // The assistant turn that asked, then one result per call. Both are needed:
     // the model cannot match a result to a call without the pair.
+    //
+    // The text goes in its **own** turn, not on the tool-call turn. Gemma's chat
+    // template renders `content` or `tool_calls`, never both — measured with
+    // /apply-template, where an assistant message carrying both came out as a
+    // bare tool call and the text vanished. The model then had no record of
+    // having written anything, so it wrote the whole answer again and the user
+    // saw it twice. Two turns render as two turns, and the model continues
+    // instead of restarting.
+    if (roundText.trim()) messages.push({ role: 'assistant', content: roundText })
     messages.push({ role: 'assistant', content: '', tool_calls: result.toolCalls })
 
     for (const call of result.toolCalls) {
