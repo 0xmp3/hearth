@@ -575,6 +575,13 @@ export default function App() {
                 <button className="link" onClick={() => setDialog('prompts')}>
                   prompt library
                 </button>
+                <button
+                  className="link"
+                  onClick={() => void h.continueInNewChat()}
+                  title="A fresh chat with this prompt and this scenario's memories, without the transcript"
+                >
+                  continue in a new chat
+                </button>
                 <span className="hint">saved as you type</span>
               </div>
             </div>

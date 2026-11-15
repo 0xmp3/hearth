@@ -15,11 +15,20 @@ import { MANAGER } from './backend'
 import * as db from './db'
 
 /**
- * Messages between captures. The model now writes through a tool as it goes, so
- * this is a backstop sweep for what it did not think to save — not the primary
- * writer. Half as often as before, because the fast path is the tool.
+ * Messages between captures.
+ *
+ * This used to be 40, on the theory that the `remember` tool was the primary
+ * writer and this was a backstop. Measured against a live roleplay, that was
+ * backwards: the tool is the *iffy* path — the model deciding mid-reply, in
+ * character, competing with the creative task — while this pass is a dedicated
+ * call with a strict schema and no distractions, and it is near-perfect.
+ *
+ * So the sweep is now the primary writer and the tool is for what the user
+ * explicitly asks for. Ten messages, because the prompt is only what arrived
+ * since the last capture: measured 3.8 s for eight messages on a 26B model, in
+ * the background, after the reply has already landed.
  */
-export const CAPTURE_EVERY = 40
+export const CAPTURE_EVERY = 10
 
 /** Roughly 500 tokens. Past this, memory starts crowding out the conversation. */
 const MAX_BLOCK_CHARS = 2000

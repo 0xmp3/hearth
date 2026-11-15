@@ -394,6 +394,56 @@ export function useHearth(
     setError(null)
   }
 
+  /**
+   * Start a fresh chat in the same scenario.
+   *
+   * A scenario is a system prompt plus the facts that belong to it, and those
+   * facts are conversation-scoped — which is right, because a premise should not
+   * follow the character into every other chat. The cost is that they die with
+   * the conversation, so continuing a story in a new chat has to carry them
+   * across deliberately. That is this: the prompt, the character, the settings,
+   * and the conversation's own memories, into a new transcript.
+   *
+   * The messages are not copied. The canon is what makes the new chat the same
+   * world; the old transcript is a record of one telling of it.
+   */
+  async function continueInNewChat(): Promise<string | null> {
+    if (streaming) return null
+    const from = activeConversation
+    if (!from) return null
+
+    const now = Date.now()
+    const conv: db.Conversation = {
+      id: db.newId(),
+      title: `${from.title} (continued)`,
+      createdAt: now,
+      updatedAt: now,
+      model: from.model,
+      systemPrompt: from.systemPrompt,
+      characterId: from.characterId,
+      profileId: from.profileId,
+      tools: from.tools,
+      effort: from.effort,
+      style: from.style,
+      index: from.index,
+    }
+    await db.putConversation(conv)
+
+    const stored = await db.listMemories()
+    const carried = stored.filter((m) => m.scope === 'conversation' && m.ownerId === from.id)
+    for (const m of carried) {
+      await db.putMemory({ ...m, id: db.newId(), ownerId: conv.id, createdAt: now, updatedAt: now })
+    }
+
+    setConversations((prev) => [conv, ...prev])
+    setActiveId(conv.id)
+    setMessages([])
+    setStats(null)
+    setError(null)
+    if (carried.length) setMemories(await db.listMemories())
+    return conv.id
+  }
+
   async function remove(id: string) {
     if (streaming) return
     await db.deleteConversation(id)
@@ -807,6 +857,7 @@ export function useHearth(
     error,
     select,
     create,
+    continueInNewChat,
     remove,
     send,
     regenerate,
