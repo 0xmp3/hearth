@@ -23,7 +23,7 @@ A mission that doesn't constrain decisions is decoration. These are the constrai
 
 ## What it is
 
-A desktop-shaped chat window that talks to a local `llama-server` over the OpenAI-compatible API. It does one thing: conversations with a model on your own GPU. No RAG, no tools, no agents, no provider zoo, no settings labyrinth.
+A desktop-shaped chat window that talks to a local `llama-server` over the OpenAI-compatible API. It does one thing: conversations with a model on your own GPU. No provider zoo, no settings labyrinth, no account. Tools, web reading and a workspace are opt-in and off by default; retrieval over your own history is opt-in per conversation (`docs/rag.md`).
 
 The point isn't to beat Chatbox. It's to be small enough that every line is yours, and to learn the parts that are genuinely interesting: SSE streaming, abort handling, local persistence, markdown rendering under load, and later a native shell.
 
