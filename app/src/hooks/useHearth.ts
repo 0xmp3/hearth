@@ -37,6 +37,12 @@ export type HearthOptions = {
    * knows which one a turn belongs to.
    */
   tools?: (conv: db.Conversation) => ToolPolicy
+  /**
+   * The app-wide reasoning effort, used when a conversation has not chosen one.
+   * `undefined` on the conversation means "follow the default", which is what
+   * makes the global setting meaningful instead of a value nobody reads.
+   */
+  defaultEffort?: db.EffortMode
 }
 
 export function useHearth(
@@ -44,7 +50,7 @@ export function useHearth(
   resolveCharacter?: (characterId: string | null | undefined) => db.Character | null,
   options: HearthOptions = {},
 ) {
-  const { maxTokens = 2048, resolveProfile, tools: policyFor } = options
+  const { maxTokens = 2048, resolveProfile, tools: policyFor, defaultEffort } = options
   const policyForConv = (conv: db.Conversation): ToolPolicy => policyFor?.(conv) ?? NO_TOOLS
   const [conversations, setConversations] = useState<db.Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -287,7 +293,7 @@ export function useHearth(
         // The driver builds the tool list from this, so a family that is off
         // never reaches the request at all.
         tools: policyForConv(conv),
-        effort: conv.effort,
+        effort: conv.effort ?? defaultEffort,
         onTool: (record) => {
           const draft = draftRef.current
           if (!draft) return

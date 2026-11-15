@@ -41,17 +41,17 @@ const MODES: { id: ToolMode; name: string; detail: string }[] = [
   {
     id: 'default',
     name: 'Everything available',
-    detail: 'memory, web tools and the folder — whatever Settings allows.',
+    detail: 'whatever Settings → Permissions allows, and nothing it does not.',
   },
   {
     id: 'files',
     name: 'Folder only',
-    detail: 'read the workspace, nothing leaves the machine, no memory writes.',
+    detail: 'the folder and memory, no web. Nothing leaves the machine.',
   },
   {
     id: 'web',
     name: 'Web only',
-    detail: 'read and search the web, no folder access, no memory writes.',
+    detail: 'the web and memory, no folder access.',
   },
   {
     id: 'none',
@@ -84,8 +84,9 @@ export default function ToolsDialog({
       footer={<button onClick={onClose}>Done</button>}
     >
       <p className="hint">
-        Settings decides what this app may ever do; this decides what <em>this chat</em> may use.
-        Narrowing needs no restart, and the request only declares what is left.
+        Settings → Permissions decides what this app may ever do; this decides what <em>this chat</em>{' '}
+        may use. A chat can only narrow that list, never widen it, and the request only declares what
+        is left.
       </p>
 
       <ul className="mode-list">

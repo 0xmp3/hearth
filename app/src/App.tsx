@@ -28,7 +28,7 @@ import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
 import { agentTurn } from './lib/turn'
-import type { ToolPolicy } from './lib/tools'
+import { familyOf, type ToolName, type ToolPolicy } from './lib/tools'
 import { clearConversations, countMessages, exportAll, importAll, listMessages, searchMessages, type Backup } from './lib/db'
 import { listVectors } from './lib/store'
 import { backupFilename, download, slug, toJson, toMarkdown } from './lib/export'
@@ -118,17 +118,34 @@ export default function App() {
   // possible, the conversation's mode decides what is offered.
   const toolPolicyFor = (conv: { tools?: string; index?: boolean }): ToolPolicy => {
     const mode = conv.tools ?? 'default'
-    const web = mode === 'default' || mode === 'web'
+    const on = prefs.tools
+
+    // Two gates, in this order. The global page decides what the app may do at
+    // all; the conversation's mode narrows that and can never widen it. The
+    // manager's own switches (workspace, network) are a third gate underneath,
+    // so a tool that is on here still cannot reach anything it has not allowed.
+    const allowed = (name: ToolName) => {
+      if (mode === 'none') return false
+      if (mode === 'default') return true
+      const family = familyOf(name)
+      if (mode === 'files') return family !== 'web'
+      if (mode === 'web') return family !== 'files'
+      return true
+    }
+    const gate = (name: ToolName, ready: boolean) => Boolean(on[name] && allowed(name) && ready)
+
     return {
-      network: net.enabled && web,
-      search: net.searchReady && web,
-      files: ws.ready && (mode === 'default' || mode === 'files'),
-      memory: mode !== 'none',
+      remember: gate('remember', true),
       // Retrieval is available to *any* conversation once something is indexed:
       // the per-conversation toggle decides what goes into the corpus, not who
       // may ask. Gating this on the current chat's own flag was a bug — the
       // whole point is asking about a chat you are not in.
-      history: embed.ready && embed.indexed > 0 && mode !== 'none',
+      search_history: gate('search_history', embed.ready && embed.indexed > 0),
+      web_read: gate('web_read', net.enabled),
+      web_search: gate('web_search', net.enabled && net.searchReady),
+      list_files: gate('list_files', ws.ready),
+      search_files: gate('search_files', ws.ready),
+      read_file: gate('read_file', ws.ready),
     }
   }
   // agentTurn, not chatTurn: it runs tools and falls back to a single call when
@@ -137,6 +154,7 @@ export default function App() {
     maxTokens: prefs.maxTokens,
     resolveProfile: (profileId) => profiles.resolve(profileId),
     tools: toolPolicyFor,
+    defaultEffort: prefs.effort,
   })
 
   // Auto-speak fires on the transition, not on every render: the turn ending is
@@ -159,7 +177,7 @@ export default function App() {
   }, [h.streaming])
   const toolMode = h.activeConversation?.tools ?? 'default'
   const effortMode = h.activeConversation?.effort ?? 'default'
-  const styleMode = h.activeConversation?.style ?? 'off'
+  const styleMode = h.activeConversation?.style ?? prefs.style
   const t = useTheme()
 
   const [showSystem, setShowSystem] = useState(false)
@@ -685,6 +703,12 @@ export default function App() {
             }
           }}
           onServerChanged={() => void h.reloadModels()}
+          tools={prefs.tools}
+          onTools={(patch) => updatePrefs({ tools: { ...prefs.tools, ...patch } })}
+          effort={prefs.effort}
+          onEffort={(effort) => updatePrefs({ effort })}
+          style={prefs.style}
+          onStyle={(style) => updatePrefs({ style })}
         />
       )}
 

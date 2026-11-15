@@ -10,7 +10,7 @@
 import * as db from './db'
 import { manager } from './backend'
 import type { ToolDef } from './stream'
-import { WORKSPACE_GUIDANCE, WORKSPACE_TOOLS } from './workspaceTools'
+import { LIST_FILES, READ_FILE, SEARCH_FILES, WORKSPACE_GUIDANCE, WORKSPACE_TOOLS } from './workspaceTools'
 import { clockReading } from './clock'
 import { searchVectors } from './vectors'
 
@@ -153,25 +153,67 @@ const SEARCH_HISTORY: ToolDef = {
  * than one the model never saw.
  */
 /** Which families of tool a turn may use. Computed once, in the app. */
-export type ToolPolicy = {
-  /** web_read — egress, manager-gated */
-  network: boolean
-  /** web_search — egress plus a working provider */
-  search: boolean
-  /** list_files / search_files / read_file — local, manager-gated */
-  files: boolean
-  /** remember — local, no manager involvement */
-  memory: boolean
-  /** search_history — local, and only for conversations the user indexed */
-  history: boolean
-}
+/**
+ * Every tool the app can offer, by name.
+ *
+ * The policy used to be five family bits — `files`, `network`, `memory` — which
+ * was fine while the only way to choose was a mode. It stops being fine the
+ * moment the user can toggle a tool: turning off `read_file` must not silently
+ * turn off `list_files`, and a family bit cannot express that.
+ */
+export type ToolName =
+  | 'remember'
+  | 'search_history'
+  | 'web_read'
+  | 'web_search'
+  | 'list_files'
+  | 'search_files'
+  | 'read_file'
+
+export type ToolPolicy = Record<ToolName, boolean>
 
 export const NO_TOOLS: ToolPolicy = {
-  network: false,
-  search: false,
-  files: false,
-  memory: false,
-  history: false,
+  remember: false,
+  search_history: false,
+  web_read: false,
+  web_search: false,
+  list_files: false,
+  search_files: false,
+  read_file: false,
+}
+
+/** Which family a tool belongs to, for the mode filter and the UI grouping. */
+export function familyOf(name: ToolName): 'local' | 'web' | 'files' {
+  if (name === 'web_read' || name === 'web_search') return 'web'
+  if (name === 'remember' || name === 'search_history') return 'local'
+  return 'files'
+}
+
+/**
+ * What each tool is, in the words the permissions page uses.
+ *
+ * Kept next to the definitions rather than in the component: a tool that is added
+ * without an entry here is a tool the user cannot see, and that is the kind of
+ * omission that only shows up as "why can it do that?".
+ */
+export const TOOL_INFO: { name: ToolName; detail: string }[] = [
+  { name: 'remember', detail: 'save a durable fact, queued for you to keep or forget' },
+  { name: 'search_history', detail: 'search the conversations you have indexed' },
+  { name: 'web_read', detail: 'fetch a page it was given, or is sure exists' },
+  { name: 'web_search', detail: 'search the web for a source' },
+  { name: 'list_files', detail: 'list the workspace folder' },
+  { name: 'search_files', detail: 'search the text of the workspace' },
+  { name: 'read_file', detail: 'read a file from the workspace' },
+]
+
+export const ALL_TOOLS_ON: ToolPolicy = {
+  remember: true,
+  search_history: true,
+  web_read: true,
+  web_search: true,
+  list_files: true,
+  search_files: true,
+  read_file: true,
 }
 
 /**
@@ -182,19 +224,21 @@ export const NO_TOOLS: ToolPolicy = {
  * tools" gets none, which is the promise that mode makes.
  */
 export function hasAnyTool(policy: ToolPolicy): boolean {
-  return policy.memory || policy.network || policy.files || policy.history
+  return Object.values(policy).some(Boolean)
 }
 
 export function toolsFor(policy: ToolPolicy): ToolDef[] {
   const tools: ToolDef[] = []
-  if (policy.memory) tools.push(...TOOLS)
-  if (policy.network) tools.push(WEB_READ)
-  if (policy.network && policy.search) tools.push(WEB_SEARCH)
+  if (policy.remember) tools.push(...TOOLS)
+  if (policy.web_read) tools.push(WEB_READ)
+  if (policy.web_search) tools.push(WEB_SEARCH)
   // The workspace is local: it does not care whether egress is on.
-  if (policy.files) tools.push(...WORKSPACE_TOOLS)
+  if (policy.list_files) tools.push(LIST_FILES)
+  if (policy.search_files) tools.push(SEARCH_FILES)
+  if (policy.read_file) tools.push(READ_FILE)
   // Retrieval is local too, and it is the one tool that reaches outside this
   // conversation without leaving the machine.
-  if (policy.history) tools.push(SEARCH_HISTORY)
+  if (policy.search_history) tools.push(SEARCH_HISTORY)
   // Last, and only when something else is already on: a model that reads the
   // clock without being asked about the date is doing something useful, but it
   // must not be the reason a "no tools" conversation suddenly has tools.
@@ -256,13 +300,11 @@ export function toolGuidance(policy: ToolPolicy): string {
   // The guidance must describe exactly the tools in the request: a paragraph
   // about a tool the model was not given is how it starts promising browsing.
   const parts: string[] = []
-  if (policy.memory) parts.push(REMEMBER_GUIDANCE)
-  if (policy.network) {
-    parts.push(WEB_GUIDANCE)
-    if (policy.search) parts.push(SEARCH_GUIDANCE)
-  }
-  if (policy.files) parts.push(WORKSPACE_GUIDANCE)
-  if (policy.history) parts.push(HISTORY_GUIDANCE)
+  if (policy.remember) parts.push(REMEMBER_GUIDANCE)
+  if (policy.web_read || policy.web_search) parts.push(WEB_GUIDANCE)
+  if (policy.web_search) parts.push(SEARCH_GUIDANCE)
+  if (policy.list_files || policy.search_files || policy.read_file) parts.push(WORKSPACE_GUIDANCE)
+  if (policy.search_history) parts.push(HISTORY_GUIDANCE)
   if (hasAnyTool(policy)) parts.push(NOW_GUIDANCE)
   return parts.join('\n\n')
 }
@@ -293,7 +335,7 @@ export async function runTool(
 
   const args = (rawArgs ?? {}) as Record<string, unknown>
 
-  if (name === 'web_read') return readPage(args, opts.network)
+  if (name === 'web_read') return readPage(args, opts.web_read)
   if (name === 'web_search') return searchWeb(args, opts)
   // No policy gate: reading the clock grants nothing, and refusing it would
   // leave the model with only the claim this tool exists to settle.
@@ -305,10 +347,10 @@ export async function runTool(
     }
   }
   if (name === 'list_files' || name === 'search_files' || name === 'read_file') {
-    return runWorkspaceTool(name, args, opts.files)
+    return runWorkspaceTool(name, args, opts[name as ToolName])
   }
-  if (name === 'search_history') return searchHistory(args, opts.history, characterId)
-  if (name === 'remember' && !opts.memory) {
+  if (name === 'search_history') return searchHistory(args, opts.search_history, characterId)
+  if (name === 'remember' && !opts.remember) {
     return {
       text: 'Tools are off in this conversation, so nothing was saved. Nothing else needs doing.',
       record: { name, ok: false, summary: 'tools off in this conversation' },
@@ -487,8 +529,8 @@ async function searchWeb(args: Record<string, unknown>, opts: ToolPolicy): Promi
     record: { name: 'web_search', ok: false, summary: message },
   })
 
-  if (!opts.network) return fail('Network access is off, so searching is unavailable.')
-  if (!opts.search) return fail('No search provider is configured in Settings.')
+  if (!opts.web_read) return fail('Network access is off, so searching is unavailable.')
+  if (!opts.web_search) return fail('No search provider is configured in Settings.')
 
   const query = typeof args.query === 'string' ? args.query.trim() : ''
   if (!query) return fail('No query was given.')

@@ -11,6 +11,8 @@
 
 import { useEffect, useState } from 'react'
 import { getMeta, setMeta } from '../lib/db'
+import type { EffortMode, TextStyle } from '../lib/db'
+import type { ToolName } from '../lib/tools'
 
 const KEY = 'hearth.prefs'
 const META = 'prefs'
@@ -48,6 +50,19 @@ type Prefs = {
    * decision about this app, so it can be overridden deliberately here.
    */
   motion: 'system' | 'on' | 'off'
+  /**
+   * Which tools the app may offer at all.
+   *
+   * This is the outer bound, and it is global on purpose: a conversation can
+   * narrow it, never widen it. A tool that is off here is never declared to the
+   * model, which is the only honest way to say "you cannot do this" — a tool
+   * that exists and fails teaches the model to promise it.
+   */
+  tools: Record<ToolName, boolean>
+  /** Default reasoning effort. A conversation can override it. */
+  effort: EffortMode
+  /** Default emphasis style. A conversation can override it. */
+  style: TextStyle
 }
 
 const DEFAULTS: Prefs = {
@@ -65,6 +80,20 @@ const DEFAULTS: Prefs = {
   speechVoice: '',
   previewWidth: 480,
   motion: 'system',
+  // Everything on, which is what "Everything available" meant before this page
+  // existed. The manager's own switches (workspace, network) stay the outer gate,
+  // so a tool being on here does not mean it can reach anything.
+  tools: {
+    remember: true,
+    search_history: true,
+    web_read: true,
+    web_search: true,
+    list_files: true,
+    search_files: true,
+    read_file: true,
+  },
+  effort: 'default',
+  style: 'off',
 }
 
 function load(): Prefs {

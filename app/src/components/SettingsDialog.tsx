@@ -8,6 +8,8 @@ import SearxngPanel from './SearxngPanel'
 import SpeechPanel from './SpeechPanel'
 import RetrievalPanel from './RetrievalPanel'
 import type { ModelInfo } from '../lib/models'
+import { ALL_TOOLS_ON, NO_TOOLS, TOOL_INFO, familyOf, type ToolName } from '../lib/tools'
+import type { EffortMode, TextStyle } from '../lib/db'
 
 type Props = {
   onClose: () => void
@@ -56,6 +58,14 @@ type Props = {
   workspaceError: string | null
   onWorkspace: (patch: { path?: string; enabled?: boolean }) => Promise<unknown>
   onCheckWorkspace: () => Promise<{ entries: string[]; truncated: boolean } | null>
+  /** Which tools the app may offer at all. A conversation can only narrow this. */
+  tools: Record<ToolName, boolean>
+  onTools: (patch: Partial<Record<ToolName, boolean>>) => void
+  /** Defaults for new conversations; each conversation can override them. */
+  effort: EffortMode
+  onEffort: (effort: EffortMode) => void
+  style: TextStyle
+  onStyle: (style: TextStyle) => void
 }
 
 export default function SettingsDialog({
@@ -103,6 +113,12 @@ export default function SettingsDialog({
   workspaceError,
   onWorkspace,
   onCheckWorkspace,
+  tools,
+  onTools,
+  effort,
+  onEffort,
+  style,
+  onStyle,
 }: Props) {
   const [backendUrl, setBackendUrlDraft] = useState(baseUrl)
   const [bindHost, setBindHost] = useState('')
@@ -573,6 +589,73 @@ export default function SettingsDialog({
         )}
 
         {network.error && <div className="error">{network.error}</div>}
+      </section>
+
+      <section className="setting">
+        <h3>Permissions</h3>
+        <p className="hint">
+          What this app may do at all. A conversation can narrow this list, never widen it, and the
+          workspace and network switches above are a second gate underneath. A tool that is off is
+          never offered to the model, so it cannot promise to use it.
+        </p>
+
+        <div className="row">
+          <button className="ghost tiny" onClick={() => onTools(ALL_TOOLS_ON)}>
+            Everything
+          </button>
+          <button
+            className="ghost tiny"
+            onClick={() => onTools({ ...NO_TOOLS, remember: true, search_history: true })}
+          >
+            Local only
+          </button>
+          <button className="ghost tiny" onClick={() => onTools(NO_TOOLS)}>
+            No tools
+          </button>
+        </div>
+
+        {(['local', 'web', 'files'] as const).map((family) => (
+          <div key={family}>
+            <h4>{family === 'local' ? 'Local' : family === 'web' ? 'Web' : 'Folder'}</h4>
+            {TOOL_INFO.filter((t) => familyOf(t.name) === family).map((t) => (
+              <label className="check" key={t.name}>
+                <input
+                  type="checkbox"
+                  checked={tools[t.name]}
+                  onChange={(e) => onTools({ [t.name]: e.target.checked })}
+                />
+                <span>
+                  <code>{t.name}</code>
+                  <em>{t.detail}</em>
+                </span>
+              </label>
+            ))}
+          </div>
+        ))}
+
+        <label className="field">
+          <span>Reasoning effort</span>
+          <select value={effort} onChange={(e) => onEffort(e.target.value as EffortMode)}>
+            <option value="default">backend default</option>
+            <option value="none">none — answer immediately</option>
+            <option value="minimal">minimal</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="max">max</option>
+          </select>
+          <em className="hint">The default for new conversations. A conversation can override it.</em>
+        </label>
+
+        <label className="field">
+          <span>Emphasis</span>
+          <select value={style} onChange={(e) => onStyle(e.target.value as TextStyle)}>
+            <option value="off">plain — bold is bold</option>
+            <option value="colour">colour — the character's hue</option>
+            <option value="expressive">expressive — colour, and a slow drift</option>
+          </select>
+          <em className="hint">The default for new conversations. A conversation can override it.</em>
+        </label>
       </section>
 
       <section className="setting">
