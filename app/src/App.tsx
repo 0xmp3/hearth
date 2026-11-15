@@ -773,6 +773,8 @@ export default function App() {
           memories={h.memories}
           characters={characters.characters}
           characterId={characters.resolve(h.activeConversation?.characterId)?.id ?? null}
+          conversationId={h.activeId}
+          conversations={h.conversations}
           capturing={h.capturing}
           condensing={h.condensing}
           onClose={() => setDialog(null)}

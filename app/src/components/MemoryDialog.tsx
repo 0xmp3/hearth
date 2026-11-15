@@ -14,6 +14,10 @@ type Props = {
   characters?: db.Character[]
   /** The character a fact typed here belongs to. Null means the empty partition. */
   characterId?: string | null
+  /** The open conversation, so "this conversation" means this one. */
+  conversationId?: string | null
+  /** Titles, so a fact from another chat can say which one. */
+  conversations?: { id: string; title: string }[]
   capturing: boolean
   condensing: boolean
   onClose: () => void
@@ -32,6 +36,8 @@ export default function MemoryDialog({
   memories,
   characters = [],
   characterId = null,
+  conversationId = null,
+  conversations = [],
   capturing,
   condensing,
   onClose,
@@ -108,7 +114,28 @@ export default function MemoryDialog({
   // they are kept, so they get their own section at the top.
   const pending = memories.filter((m) => m.kind !== 'summary' && m.pending)
   const facts = memories.filter((m) => m.kind !== 'summary' && !m.pending)
-  const groups: db.MemoryScope[] = ['character', 'conversation']
+
+  /**
+   * Conversation facts are split by *which* conversation, because the panel used
+   * to list every one of them under "This conversation". The injection was always
+   * correct — a chat only ever received its own — but the panel said otherwise,
+   * which reads exactly like a leak.
+   */
+  const conversationFacts = facts.filter((m) => m.scope === 'conversation')
+  const sections: { key: string; label: string; items: db.Memory[] }[] = [
+    { key: 'character', label: 'Characters', items: facts.filter((m) => m.scope === 'character') },
+    { key: 'here', label: 'This conversation', items: conversationFacts.filter((m) => m.ownerId === conversationId) },
+    {
+      key: 'elsewhere',
+      label: 'Other conversations',
+      items: conversationFacts.filter((m) => m.ownerId !== conversationId),
+    },
+  ]
+
+  /** The title of the chat a fact came from, for the "other conversations" list. */
+  function chatOf(m: db.Memory): string {
+    return conversations.find((c) => c.id === m.ownerId)?.title ?? 'a deleted conversation'
+  }
 
   /**
    * A character fact belongs to one character, and "This character" is a lie once
@@ -241,14 +268,13 @@ export default function MemoryDialog({
       {facts.length === 0 && summaries.length === 0 ? (
         <p className="hint">Nothing remembered yet.</p>
       ) : (
-        groups.map((scope) => {
-          const items = facts.filter((m) => m.scope === scope)
-          if (!items.length) return null
+        sections.map((section) => {
+          if (!section.items.length) return null
           return (
-            <section key={scope} className="setting">
-              <h3>{scope === 'character' ? 'Characters' : SCOPE_LABEL[scope]}</h3>
+            <section key={section.key} className="setting">
+              <h3>{section.label}</h3>
               <ul className="memory-list">
-                {items.map((m) => (
+                {section.items.map((m) => (
                   <li key={m.id} className="memory-item">
                     {editing === m.id ? (
                       <>
@@ -271,7 +297,12 @@ export default function MemoryDialog({
                       </>
                     ) : (
                       <>
-                        <span className="memory-text">{m.text}</span>
+                        <span className="memory-text">
+                          {section.key === 'elsewhere' && (
+                            <span className="character-note">{chatOf(m)}</span>
+                          )}
+                          {m.text}
+                        </span>
                         <button
                           className="ghost tiny"
                           onClick={() => {
