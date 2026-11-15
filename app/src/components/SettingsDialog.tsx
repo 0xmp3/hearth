@@ -6,6 +6,7 @@ import { setBackendUrl, DEFAULT_BACKEND } from '../lib/config'
 import { manager } from '../lib/backend'
 import SearxngPanel from './SearxngPanel'
 import SpeechPanel from './SpeechPanel'
+import RetrievalPanel from './RetrievalPanel'
 import type { ModelInfo } from '../lib/models'
 
 type Props = {
@@ -39,6 +40,8 @@ type Props = {
   onServerChanged: () => void
   /** Called when the speech panel changes something the app mirrors. */
   onSpeech?: () => void
+  /** Called when the retrieval panel changes either engine, so the app re-reads readiness. */
+  onRetrieval?: () => void
   autoSpeak: boolean
   onAutoSpeak: (value: boolean) => void
   speechVoice: string
@@ -85,6 +88,7 @@ export default function SettingsDialog({
   onLayout,
   onServerChanged,
   onSpeech,
+  onRetrieval,
   autoSpeak,
   onAutoSpeak,
   speechVoice,
@@ -569,6 +573,15 @@ export default function SettingsDialog({
         )}
 
         {network.error && <div className="error">{network.error}</div>}
+      </section>
+
+      <section className="setting">
+        <h3>Retrieval</h3>
+        <p className="hint">
+          Search your own conversations. Two small local models: one turns a message into numbers,
+          the other reorders the results. Both start when needed and stop after ten idle minutes.
+        </p>
+        <RetrievalPanel onState={() => onRetrieval?.()} />
       </section>
 
       <section className="setting">

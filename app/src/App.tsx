@@ -611,6 +611,7 @@ export default function App() {
           }
           onTheme={t.setTheme}
           onSpeech={readSpeech}
+          onRetrieval={() => void embed.refresh()}
           autoSpeak={prefs.autoSpeak}
           onAutoSpeak={(value) => updatePrefs({ autoSpeak: value })}
           speechVoice={prefs.speechVoice}

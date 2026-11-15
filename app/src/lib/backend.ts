@@ -206,6 +206,31 @@ export type RerankResult = {
   tokens: number | null
 }
 
+/** One downloadable reranker, and whether it is already on disk. */
+export type RerankDownloadEntry = {
+  id: string
+  name: string
+  note: string
+  file: string
+  /** Absolute path, so "use this" can select it without guessing a separator. */
+  path: string
+  size: number
+  installed: boolean
+  bytes: number
+}
+
+export type RerankDownloadState = {
+  dir: string
+  entries: RerankDownloadEntry[]
+  progress: {
+    phase: 'idle' | 'downloading' | 'verifying' | 'done' | 'error'
+    got: number
+    total: number
+    file: string | null
+    error: string | null
+  }
+}
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
   /** Egress is the manager's decision; the app only asks. */
@@ -276,6 +301,12 @@ export const manager = {
   /** Score documents against a query. Returns them in descending order. */
   rerank: (query: string, documents: string[], topN?: number) =>
     call<RerankResult>('/api/rerank', { method: 'POST', body: JSON.stringify({ query, documents, topN }) }),
+  rerankDownloads: () => call<RerankDownloadState>('/api/rerank/download'),
+  downloadReranker: (id: string) =>
+    call<{ started: boolean; id: string | null }>('/api/rerank/download', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
 }
 
 /** The context size the running server was launched with, if it is ours. */

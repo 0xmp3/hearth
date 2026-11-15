@@ -30,6 +30,7 @@ import * as searxng from './searxng/install.mjs'
 import * as tts from './tts/index.mjs'
 import * as embed from './embed/index.mjs'
 import * as rerank from './rerank/index.mjs'
+import * as rerankDownload from './rerank/download.mjs'
 import * as ws from './workspace/files.mjs'
 import {
   BIN,
@@ -796,6 +797,29 @@ const server = createServer((req, res) => {
       .then(async (buf) => {
         const body = buf.length ? JSON.parse(buf.toString()) : {}
         json(res, 200, await rerank.rerank(DATA, body))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  // The reranker is a 300–600 MB file the app has to fetch itself, so it gets the
+  // same shape as the engine installer: start it, poll it, verify the digest.
+  if (req.method === 'GET' && url.pathname === '/api/rerank/download') {
+    rerankDownload
+      .describeDownloads(DATA)
+      .then((state) => json(res, 200, state))
+      .catch((err) => json(res, 500, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/rerank/download') {
+    readBody(req, 1e4)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        // Fire and forget: the UI polls the progress object. A download that
+        // takes two minutes must not hold a request open.
+        rerankDownload.downloadReranker(DATA, body.id).catch((err) => push(`[rerank] ${err.message}`))
+        json(res, 200, { started: true, id: body.id ?? null })
       })
       .catch((err) => json(res, 400, { error: err.message }))
     return
