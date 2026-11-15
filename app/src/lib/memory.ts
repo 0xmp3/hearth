@@ -62,8 +62,11 @@ Return only facts that are NEW or that REPLACE an existing one.
   If nothing is superseded, return an empty array.
 
 Store: preferences, ongoing projects, environment, tools, decisions, constraints.
-Never store: greetings, one-off questions, anything the assistant said about itself,
-anything the user did not state, or facts already covered by an existing memory.
+Never store: greetings, one-off questions, anything the assistant said about itself as an
+assistant, anything about the user that the user did not state, or facts already covered by
+an existing memory. A character's backstory, setting and history are worth storing with scope
+"character" even when you wrote them — that is the canon of the conversation, not a claim
+about the user.
 
 Example:
 Existing: [{"id":"m1","text":"Uses Windows 11"}]

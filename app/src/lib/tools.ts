@@ -39,11 +39,14 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'remember',
     description:
-      'Save a durable fact about the user so it persists across conversations. ' +
-      'Use it when the user states something about themselves that will still be true later: ' +
-      'preferences, ongoing projects, hardware, tools, constraints, decisions. ' +
-      'Do not use it for greetings, one-off questions, or anything about yourself. ' +
-      'A prompt or persona the user asks you to write is not a fact about them — do not save it. ' +
+      'Save a durable fact so it persists. Use it when something will still be true later: ' +
+      'preferences, ongoing projects, hardware, tools, constraints, decisions — or, with scope ' +
+      '"character", facts about the character you are talking to and their world: their history, ' +
+      'their setting, what they know. ' +
+      'Do not use it for greetings, one-off questions, or anything about yourself as an assistant. ' +
+      'A system prompt or persona the user asks you to write for use somewhere else is not a fact — ' +
+      'but a backstory the user asks you to write for the character you are talking to is: save its ' +
+      'key facts with scope "character". ' +
       'Never save a placeholder: "the town mentioned in the travel chat" is a note that you do not ' +
       'know the town, not a fact. If you need the detail, search for it.',
     parameters: {
@@ -199,9 +202,13 @@ export function toolsFor(policy: ToolPolicy): ToolDef[] {
   return tools
 }
 
-const REMEMBER_GUIDANCE = `You have a tool called remember. Call it when the user states something durable about themselves: a preference, an ongoing project, hardware or software they use, a constraint, or a decision they have made. Do not call it for greetings, one-off questions, or anything about yourself.
+const REMEMBER_GUIDANCE = `You have a tool called remember. Call it when the user states something durable: a preference, an ongoing project, hardware or software they use, a constraint, or a decision they have made. When a character is active, also call it for facts about that character or their world — their history, their setting, what they know — with scope "character", which is only injected when talking to them.
 
-Never save a placeholder. "The town mentioned in the travel-planning chat" is not a fact — it is a note that you do not know the town, and it will be useless in every later conversation. If you need the detail, search for it; if you cannot find it, say so. A fact has to be true on its own, without the conversation around it, and it has to be something the user actually told you rather than something you inferred, guessed, or were asked to write.
+Do not call it for greetings, one-off questions, or anything about yourself as an assistant.
+
+A system prompt or persona the user asks you to write for use somewhere else is not a fact about them, so do not save it. A backstory the user asks you to write for the character you are talking to is different: its key facts belong in memory with scope "character", and that is what the scope is for. Write the backstory, then save what matters from it.
+
+Never save a placeholder. "The town mentioned in the travel-planning chat" is not a fact — it is a note that you do not know the town, and it will be useless in every later conversation. If you need the detail, search for it; if you cannot find it, say so. A fact has to be true on its own, without the conversation around it, and it has to be something the user actually told you or asked for rather than something you inferred or guessed.
 
 The user sees the fact and chooses whether to keep it, so do not say you have remembered it — say you have offered to.`
 
@@ -327,7 +334,7 @@ export async function runTool(
   // the injection matches on ownerId. Better to say so than to write a dead row.
   if (scope === 'character' && !characterId) {
     return {
-      text: 'Nothing was saved: no character is active in this conversation, so a character fact has nowhere to belong. Use "global" or "conversation".',
+      text: 'Nothing was saved: no character is active in this conversation, so a character fact has nowhere to belong. Tell the user to switch to that character and ask again, or save it as "global" if it is really about them.',
       record: { name, ok: false, summary: 'no character for a character fact' },
     }
   }
