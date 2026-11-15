@@ -183,6 +183,29 @@ export type EmbedResult = {
   tokens: number | null
 }
 
+/** Reranker state as the manager reports it. */
+export type RerankState = {
+  enabled: boolean
+  ready: boolean
+  engine: { path: string; exists: boolean }
+  model: { path: string; exists: boolean; bytes: number }
+  port: number
+  /** 0 = CPU, which is the default: the GPU belongs to the chat model. */
+  ngl: number
+  candidates: number
+  idleMinutes: number
+  serverRunning: boolean
+  error: string | null
+  log: string[]
+}
+
+export type RerankResult = {
+  model: string
+  /** `index` is the position in the array that was sent. */
+  results: { index: number; score: number }[]
+  tokens: number | null
+}
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
   /** Egress is the manager's decision; the app only asks. */
@@ -247,6 +270,12 @@ export const manager = {
   /** Text in, vectors out. The manager owns the engine; the page never sees it. */
   embed: (input: string | string[], kind: 'document' | 'query' = 'document') =>
     call<EmbedResult>('/api/embed', { method: 'POST', body: JSON.stringify({ input, kind }) }),
+  rerankState: () => call<RerankState>('/api/rerank'),
+  saveRerank: (patch: Partial<Pick<RerankState, 'enabled' | 'port' | 'ngl' | 'idleMinutes' | 'candidates'>> & { model?: string }) =>
+    call<RerankState>('/api/rerank/config', { method: 'POST', body: JSON.stringify(patch) }),
+  /** Score documents against a query. Returns them in descending order. */
+  rerank: (query: string, documents: string[], topN?: number) =>
+    call<RerankResult>('/api/rerank', { method: 'POST', body: JSON.stringify({ query, documents, topN }) }),
 }
 
 /** The context size the running server was launched with, if it is ours. */

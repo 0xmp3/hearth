@@ -258,6 +258,10 @@ export function putMessage(m: Message): Promise<IDBValidKey> {
   return tx('messages', 'readwrite', (s) => s.put(m))
 }
 
+export function getMessage(id: string): Promise<Message | undefined> {
+  return tx<Message | undefined>('messages', 'readonly', (s) => s.get(id))
+}
+
 export async function deleteMessage(id: string): Promise<void> {
   const db = await open()
   await new Promise<void>((resolve, reject) => {

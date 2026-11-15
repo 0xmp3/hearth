@@ -29,6 +29,7 @@ import { webSearch } from './net/search.mjs'
 import * as searxng from './searxng/install.mjs'
 import * as tts from './tts/index.mjs'
 import * as embed from './embed/index.mjs'
+import * as rerank from './rerank/index.mjs'
 import * as ws from './workspace/files.mjs'
 import {
   BIN,
@@ -765,6 +766,41 @@ const server = createServer((req, res) => {
     return
   }
 
+  // ---- reranking ----------------------------------------------------------
+  //
+  // A cross-encoder over the embedding stage's candidates. Same shape again: the
+  // manager owns the engine, the page asks. It runs on the CPU by default so it
+  // cannot take the VRAM the chat model is using.
+
+  if (req.method === 'GET' && url.pathname === '/api/rerank') {
+    rerank
+      .describe(DATA)
+      .then((state) => json(res, 200, state))
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/rerank/config') {
+    readBody(req, 1e4)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        rerank.saveRerankConfig(DATA, body)
+        json(res, 200, await rerank.describe(DATA))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/rerank') {
+    readBody(req, 4e6)
+      .then(async (buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        json(res, 200, await rerank.rerank(DATA, body))
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
+    return
+  }
+
   // ---- speech -------------------------------------------------------------
   //
   // The manager owns the engine and the clips; the app only asks for audio. The
@@ -1008,6 +1044,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
     searxng.stop(DATA)
     tts.shutdown()
     embed.shutdown()
+    rerank.shutdown()
     process.exit(0)
   })
 }
@@ -1018,6 +1055,7 @@ process.on('exit', () => {
   searxng.stop(DATA)
   tts.shutdown()
   embed.shutdown()
+  rerank.shutdown()
 })
 
 // The net under every route. A rejected promise nobody awaited used to end the

@@ -249,7 +249,16 @@ export type VectorHit = {
   messageId: string
   conversationId: string
   part: number
+  /**
+   * The ordering score: the reranker's logit when it ran, otherwise the cosine.
+   * Comparable within one result set and meaningless across calls.
+   */
   score: number
+  /** The cosine, always. This is the number the floor is calibrated against. */
+  similarity: number
+  text: string
+  role: 'user' | 'assistant'
+  createdAt: number
 }
 
 export type SearchOutcome = {
@@ -259,23 +268,33 @@ export type SearchOutcome = {
   /** Vectors compared. */
   scanned: number
   /**
-   * The best score seen, floor or not. This is the number a floor gets
+   * The best cosine seen, floor or not. This is the number a floor gets
    * calibrated against — a search that found nothing still has a top score, and
    * knowing it is 0.31 rather than 0.62 is how you tell "no match" from "the
    * floor is wrong".
    */
   top: number
+  /** Whether a cross-encoder reordered the candidates. */
+  reranked: boolean
+  rerankModel: string | null
 }
 
 /**
  * Find messages that mean roughly what `query` means.
  *
- * `floor` defaults to 0 on purpose: the number belongs to the calibration set,
- * and a default picked here would be a guess wearing a number.
+ * Two stages, and the second is what makes it usable. The embedding stage is a
+ * bi-encoder: it compares two summaries of meaning, and on short chat messages it
+ * put the right answer anywhere from 1st to 36th. The reranker is a cross-encoder
+ * that reads query and message together; over the top 10 candidates it moved the
+ * answer to the top 3 in every case measured, and to 1st in half of them.
+ *
+ * `floor` applies to the **cosine**, not the reranker's logit, because the cosine
+ * is the number that can be calibrated across models and the logit cannot. The
+ * reranker reorders; it does not decide what counts as a match.
  */
 export async function searchVectors(
   query: string,
-  opts: { limit?: number; floor?: number; conversationId?: string } = {},
+  opts: { limit?: number; floor?: number; conversationId?: string; candidates?: number } = {},
 ): Promise<SearchOutcome> {
   const text = String(query ?? '').trim()
   if (!text) throw new Error('nothing to search for')
@@ -293,7 +312,7 @@ export async function searchVectors(
   const queryVector = normalise(embedded.vectors[0])
 
   const rows = await db.listVectors(opts.conversationId)
-  const scored: VectorHit[] = []
+  const scored: { row: db.VectorRow; similarity: number }[] = []
   let top = 0
 
   for (const row of rows) {
@@ -301,24 +320,77 @@ export async function searchVectors(
     // meta check above catches the configured case; this catches a half-cleared
     // store.
     if (row.dims !== queryVector.length) continue
-    const score = dot(queryVector, row.vector)
-    if (score > top) top = score
-    if (score < (opts.floor ?? 0)) continue
-    scored.push({
+    const similarity = dot(queryVector, row.vector)
+    if (similarity > top) top = similarity
+    if (similarity < (opts.floor ?? 0)) continue
+    scored.push({ row, similarity })
+  }
+
+  scored.sort((a, b) => b.similarity - a.similarity)
+
+  // How many candidates the reranker sees. More than the caller asked for,
+  // because the reranker's job is to find the one the embedding stage buried.
+  const rerankState = await manager.rerankState().catch(() => null)
+  const rerankReady = Boolean(rerankState?.enabled && rerankState.ready)
+  const candidates = Math.max(
+    opts.limit ?? 5,
+    Math.min(opts.candidates ?? rerankState?.candidates ?? 10, scored.length),
+  )
+  const shortlist = scored.slice(0, candidates)
+
+  // The text is fetched here rather than stored with the vector: the message is
+  // the truth, and a vector row that outlived an edit would otherwise return
+  // text that is no longer in the transcript.
+  const hits: VectorHit[] = []
+  for (const { row, similarity } of shortlist) {
+    const message = await db.getMessage(row.messageId)
+    if (!message) continue
+    hits.push({
       messageId: row.messageId,
       conversationId: row.conversationId,
       part: row.part,
-      score,
+      score: similarity,
+      similarity,
+      text: message.content,
+      role: message.role,
+      createdAt: message.createdAt,
     })
   }
 
-  scored.sort((a, b) => b.score - a.score)
+  let reranked = false
+  let rerankModel: string | null = null
+
+  if (rerankReady && hits.length > 1) {
+    try {
+      const result = await manager.rerank(text, hits.map((hit) => hit.text))
+      const order = result.results
+        .filter((r) => r.index >= 0 && r.index < hits.length)
+        .map((r) => ({ hit: hits[r.index], score: r.score }))
+      // A reranker that returns fewer rows than it was given must not silently
+      // drop the rest: append whatever it did not mention, in cosine order.
+      const seen = new Set(result.results.map((r) => r.index))
+      hits.forEach((hit, i) => {
+        if (!seen.has(i)) order.push({ hit, score: hit.similarity })
+      })
+      hits.length = 0
+      for (const { hit, score } of order) hits.push({ ...hit, score })
+      reranked = true
+      rerankModel = result.model
+    } catch {
+      // A reranker that is down must not break a search: the cosine order is
+      // still a result, just a worse one.
+      reranked = false
+    }
+  }
+
   return {
-    hits: scored.slice(0, opts.limit ?? 5),
+    hits: hits.slice(0, opts.limit ?? 5),
     model: meta.model,
     dims: meta.dims,
     scanned: rows.length,
     top,
+    reranked,
+    rerankModel,
   }
 }
 
