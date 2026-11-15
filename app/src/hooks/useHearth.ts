@@ -9,6 +9,7 @@ import { NO_TOOLS, runTool as executeTool, toolGuidance, type ToolPolicy } from 
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { currentDateBlock } from '../lib/clock'
 import { suggestTitle } from '../lib/title'
+import { indexConversation, dropConversationIndex } from '../lib/vectors'
 import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
 import { toDataUrl, type Attachment } from '../lib/attachments'
 import {
@@ -306,6 +307,13 @@ export function useHearth(
       if (finished?.content.trim()) {
         void inBackground(() => db.listMessages(conv.id).then((all) => maybeCapture(conv, all)))
       }
+      // Retrieval is opt-in per conversation and incremental: one embedding call
+      // for the new messages, not a re-index. It runs on its own engine, so it
+      // does not queue behind the chat model — but it is still background work,
+      // and a failure here must not touch the reply the user just got.
+      if (conv.index) {
+        void inBackground(() => indexConversation(conv.id).catch(() => {}))
+      }
       // Compaction is triggered by measured pressure — what the request actually
       // cost — and deliberately not gated on the reply having content: a reply
       // that ran out of budget is exactly the case where the next request most
@@ -426,6 +434,25 @@ export function useHearth(
 
   async function setConversationStyle(style: db.TextStyle | undefined) {
     await patchConversation({ style })
+  }
+
+  /**
+   * Turn retrieval on or off for this conversation.
+   *
+   * The flag is the user's decision; the vectors are a cache that follows it.
+   * Turning it on indexes what is already here, turning it off deletes the
+   * vectors and loses nothing but the time to rebuild them.
+   */
+  async function setConversationIndex(on: boolean) {
+    await patchConversation({ index: on })
+    const id = activeId
+    if (!id) return
+    try {
+      if (on) await indexConversation(id)
+      else await dropConversationIndex(id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
   }
 
   async function setSystemPrompt(text: string) {
@@ -729,6 +756,7 @@ export function useHearth(
     setConversationTools,
     setConversationEffort,
     setConversationStyle,
+    setConversationIndex,
     streaming,
     stats,
     error,

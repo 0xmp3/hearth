@@ -32,6 +32,14 @@ export type Conversation = {
   effort?: EffortMode
   /** How this conversation dresses emphasis. Absent means `off`. */
   style?: TextStyle
+  /**
+   * Index this conversation for retrieval. Absent means no.
+   *
+   * Opt-in per conversation because indexing costs an embedding pass and a
+   * little disk, and a chat you do not care about should not pay for either. The
+   * vectors are a cache: turning this off deletes them and loses nothing.
+   */
+  index?: boolean
 }
 
 /**
@@ -52,6 +60,21 @@ export type EffortMode = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'hi
 
 import type { Attachment } from './attachments'
 
+/**
+ * One message a reply cited, so the UI can offer a chip that jumps to it.
+ *
+ * Stored on the message rather than recomputed: the reply is a record of what the
+ * model was shown, and a later re-index must not change what an old answer cited.
+ */
+export type ToolSource = {
+  conversationId: string
+  messageId: string
+  title: string
+  role: 'user' | 'assistant'
+  createdAt: number
+  score: number
+}
+
 export type Message = {
   id: string
   conversationId: string
@@ -67,7 +90,7 @@ export type Message = {
   /** Files sent with this message. Text is inlined; images go as content parts. */
   attachments?: Attachment[]
   /** Tools this reply ran, so the activity is visible and not a black box. */
-  tools?: { name: string; ok: boolean; summary: string; memoryId?: string }[]
+  tools?: { name: string; ok: boolean; summary: string; memoryId?: string; sources?: ToolSource[] }[]
   stats?: {
     tokPerSec?: number
     promptTokPerSec?: number

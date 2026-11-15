@@ -26,6 +26,8 @@ type Props = {
   fx?: TextStyle
   /** This message's character hue, if it has one. Drives the effect colour. */
   hue?: number
+  /** Open the message a reply cited. */
+  onJumpToSource?: (conversationId: string, messageId: string) => void
 }
 
 function stamp(ts: number): string {
@@ -33,6 +35,19 @@ function stamp(ts: number): string {
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const sameDay = d.toDateString() === new Date().toDateString()
   return sameDay ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
+}
+
+/**
+ * One chip per conversation, not per message.
+ *
+ * A search usually returns several messages from the same chat, and five chips
+ * reading "travel planning" is noise. The first cited message is the one the chip
+ * jumps to, which is the one the model quoted first.
+ */
+function chatsOf(sources: { conversationId: string; messageId: string; title: string; role: 'user' | 'assistant' }[]) {
+  const seen = new Map<string, (typeof sources)[number]>()
+  for (const s of sources) if (!seen.has(s.conversationId)) seen.set(s.conversationId, s)
+  return [...seen.values()]
 }
 
 function MessageView({
@@ -52,6 +67,7 @@ function MessageView({
   onPreview,
   fx = 'off',
   hue,
+  onJumpToSource,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -87,6 +103,7 @@ function MessageView({
   return (
     <article
       className={`msg ${message.role}${hue !== undefined ? ' voiced' : ''}`}
+      data-message-id={message.id}
       style={hue !== undefined ? ({ ['--voice-h' as string]: hue } as React.CSSProperties) : undefined}
     >
       <Avatar
@@ -164,6 +181,20 @@ function MessageView({
                       </span>
                     ) : t.name === 'remember' ? (
                       t.summary === 'already known' ? 'memory: already known' : `memory: ${t.summary}`
+                    ) : t.name === 'search_history' && t.sources?.length ? (
+                      <span className="sources">
+                        <span className="sources-label">from your history</span>
+                        {chatsOf(t.sources).map((s) => (
+                          <button
+                            key={s.conversationId}
+                            className="source-chip"
+                            title={`${s.title} · ${s.role === 'user' ? 'you said it' : 'the reply said it'}`}
+                            onClick={() => onJumpToSource?.(s.conversationId, s.messageId)}
+                          >
+                            {s.title}
+                          </button>
+                        ))}
+                      </span>
                     ) : (
                       `${t.name}: ${t.summary}`
                     )}

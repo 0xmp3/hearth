@@ -281,6 +281,38 @@ button, select, textarea { font: inherit; color: inherit; }
 
 .msg-tools .tool-bad { color: var(--danger); border-color: var(--danger); }
 
+/* A cited message: one chip per conversation, and it opens the message. */
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sources-label {
+  color: var(--muted);
+}
+
+.source-chip {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .memory-list {
   list-style: none;
   margin: 0;

@@ -21,6 +21,10 @@ type Props = {
   fx?: TextStyle
   /** The hue a message's character writes in, if it has one. */
   hueFor?: (characterId?: string | null) => number | undefined
+  /** Open the message a reply cited. */
+  onJumpToSource?: (conversationId: string, messageId: string) => void
+  /** A message to scroll to, set when a citation chip is clicked. */
+  jumpTo?: string | null
 }
 
 export default function Chat({
@@ -38,6 +42,8 @@ export default function Chat({
   onPreview,
   fx,
   hueFor,
+  onJumpToSource,
+  jumpTo,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -57,6 +63,18 @@ export default function Chat({
     const el = scroller.current
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [messages])
+
+  // A citation chip asks for a specific message. It may arrive before the
+  // conversation has loaded, so this runs on `messages` too and simply does
+  // nothing until the element exists.
+  useEffect(() => {
+    if (!jumpTo) return
+    const el = scroller.current?.querySelector(`[data-message-id="${jumpTo}"]`)
+    if (!el) return
+    // Stop following the stream: the user asked to look at something specific.
+    pinned.current = false
+    el.scrollIntoView({ block: 'center' })
+  }, [jumpTo, messages])
 
   // The last user message is never the last message overall — the reply
   // always follows it — so "edit" needs its own index.
@@ -88,6 +106,7 @@ export default function Chat({
             onPreview={onPreview}
             fx={fx}
             hue={hueFor?.(m.characterId)}
+            onJumpToSource={onJumpToSource}
             speech={
               speech
                 ? {

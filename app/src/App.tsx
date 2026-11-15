@@ -23,6 +23,7 @@ import { usePrefs } from './hooks/usePrefs'
 import { useNetwork } from './hooks/useNetwork'
 import { useWorkspace } from './hooks/useWorkspace'
 import { useSpeech } from './hooks/useSpeech'
+import { useEmbed } from './hooks/useEmbed'
 import { usePrompts } from './hooks/usePrompts'
 import Dialog from './components/Dialog'
 import { useTheme } from './theme/apply'
@@ -71,6 +72,7 @@ export default function App() {
   // copies of the answers.
   const net = useNetwork()
   const ws = useWorkspace()
+  const embed = useEmbed()
 
   // Speech is the manager's: this only mirrors whether it can speak, so the UI
   // can avoid offering a button that would do nothing.
@@ -113,7 +115,7 @@ export default function App() {
 
   // What a conversation may use: the manager's switches decide what is
   // possible, the conversation's mode decides what is offered.
-  const toolPolicyFor = (conv: { tools?: string }): ToolPolicy => {
+  const toolPolicyFor = (conv: { tools?: string; index?: boolean }): ToolPolicy => {
     const mode = conv.tools ?? 'default'
     const web = mode === 'default' || mode === 'web'
     return {
@@ -121,6 +123,11 @@ export default function App() {
       search: net.searchReady && web,
       files: ws.ready && (mode === 'default' || mode === 'files'),
       memory: mode !== 'none',
+      // Retrieval is available to *any* conversation once something is indexed:
+      // the per-conversation toggle decides what goes into the corpus, not who
+      // may ask. Gating this on the current chat's own flag was a bug — the
+      // whole point is asking about a chat you are not in.
+      history: embed.ready && embed.indexed > 0 && mode !== 'none',
     }
   }
   // agentTurn, not chatTurn: it runs tools and falls back to a single call when
@@ -157,6 +164,10 @@ export default function App() {
   const [showSystem, setShowSystem] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogName | null>(null)
+  // A citation chip asks for a message, possibly in another conversation. The id
+  // is held until the chat renders it, so switching and scrolling are one action
+  // rather than two that race.
+  const [jumpTo, setJumpTo] = useState<string | null>(null)
   // The page a reply produced. Held here rather than in Chat so the panel
   // survives a re-render of the transcript.
   const [preview, setPreview] = useState<PreviewDoc | null>(null)
@@ -517,6 +528,11 @@ export default function App() {
           <Chat
             messages={h.messages}
             streaming={h.streaming}
+            jumpTo={jumpTo}
+            onJumpToSource={(conversationId, messageId) => {
+              if (conversationId !== h.activeId) h.select(conversationId)
+              setJumpTo(messageId)
+            }}
             pendingMemoryIds={pendingMemoryIds}
             onKeepMemory={(id) => void h.keepMemory(id)}
             onForgetMemory={(id) => void h.forgetMemory(id)}
@@ -694,6 +710,12 @@ export default function App() {
           onStyle={(style) => void h.setConversationStyle(style === 'off' ? undefined : style)}
           motion={prefs.motion}
           available={{ web: net.enabled, search: net.searchReady, files: ws.ready }}
+          index={{
+            on: Boolean(h.activeConversation?.index),
+            ready: embed.ready,
+            reranked: embed.rerankReady,
+            onToggle: (on) => void h.setConversationIndex(on).then(() => embed.refresh()),
+          }}
           onClose={() => setDialog(null)}
         />
       )}

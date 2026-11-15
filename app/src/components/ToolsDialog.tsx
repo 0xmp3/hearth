@@ -20,6 +20,15 @@ type Props = {
   /** The app's motion preference, so the note below can be honest. */
   motion: 'system' | 'on' | 'off'
   available: { web: boolean; search: boolean; files: boolean }
+  /** Retrieval: whether this chat is indexed, and whether it can be. */
+  index: {
+    on: boolean
+    /** An embedding model is configured, so indexing is possible at all. */
+    ready: boolean
+    /** A reranker is configured, so results are reordered rather than just ranked. */
+    reranked: boolean
+    onToggle: (on: boolean) => void
+  }
   onClose: () => void
 }
 
@@ -55,6 +64,7 @@ export default function ToolsDialog({
   onStyle,
   motion,
   available,
+  index,
   onClose,
 }: Props) {
   // Motion is silenced by the system on a lot of machines, and "expressive"
@@ -99,6 +109,35 @@ export default function ToolsDialog({
           )
         })}
       </ul>
+
+      <h4>Retrieval</h4>
+      <p className="hint">
+        Index this conversation so the model can search it later — after the beginning has been
+        summarised away, and from other chats. The index is a cache: turning it off deletes the
+        vectors and loses nothing but the time to rebuild them. This is not memory. Memory is a fact
+        you chose to keep; this is the transcript, quoted back with a link to the message.
+      </p>
+      <label className="field">
+        <span>Index this conversation</span>
+        <input
+          type="checkbox"
+          checked={index.on}
+          disabled={!index.ready}
+          onChange={(e) => index.onToggle(e.target.checked)}
+        />
+      </label>
+      {!index.ready && (
+        <p className="hint warn-note">
+          No embedding model is configured, so there is nothing to index with. The manager's
+          <code> embed </code> settings need a model path.
+        </p>
+      )}
+      {index.ready && index.on && !index.reranked && (
+        <p className="hint warn-note">
+          No reranker is configured, so results are ordered by embedding similarity alone — measured,
+          that put the right answer in the top 3 for 3 of 6 questions instead of 6 of 6.
+        </p>
+      )}
 
       <h4>Thinking</h4>
       <p className="hint">

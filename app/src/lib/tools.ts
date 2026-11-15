@@ -12,6 +12,7 @@ import { manager } from './backend'
 import type { ToolDef } from './stream'
 import { WORKSPACE_GUIDANCE, WORKSPACE_TOOLS } from './workspaceTools'
 import { clockReading } from './clock'
+import { searchVectors } from './vectors'
 
 /** What the UI shows for a tool that ran. */
 export type ToolRecord = {
@@ -20,7 +21,13 @@ export type ToolRecord = {
   summary: string
   /** Set by `remember`: the pending memory the user can keep or forget. */
   memoryId?: string
+  /** Set by `search_history`: the messages the reply was built from. */
+  sources?: ToolSource[]
 }
+
+/** One message a reply cited, so the UI can offer a chip that jumps to it. */
+import type { ToolSource } from './db'
+export type { ToolSource }
 
 export type ToolOutcome = {
   /** Fed back to the model as the tool result. */
@@ -99,6 +106,39 @@ const WEB_SEARCH: ToolDef = {
 }
 
 /**
+ * Retrieval over the user's own conversations.
+ *
+ * The description is doing real work here: a model that does not know the corpus
+ * is opt-in will read an empty result as "the user never said that" and invent a
+ * detail to fill the gap. Saying "only indexed conversations" up front is what
+ * makes "I could not find it" an honest answer instead of a failure.
+ */
+const SEARCH_HISTORY: ToolDef = {
+  name: 'search_history',
+  description:
+    "Search the user's other conversations for messages that match a query. Use it when the answer " +
+    'depends on something said in a different chat, or earlier in this one after the beginning was ' +
+    'summarised away: a name, a decision, a detail the user expects you to remember. Returns the ' +
+    'matching messages with the conversation they came from, the date, and who said it. It searches ' +
+    'only the conversations the user chose to index, so an empty result means "not indexed, or not ' +
+    'there" — say that rather than guessing.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description:
+          'What to look for, in the words that would appear in the message — not the words of the ' +
+          'question. "Vellmarrow ferry" finds more than "what was the name of the town".',
+      },
+      limit: { type: 'integer', description: 'How many messages to return. Default 8, maximum 20.' },
+    },
+    required: ['query'],
+    additionalProperties: false,
+  },
+}
+
+/**
  * The tools on offer this turn.
  *
  * Egress off means no web tool at all; egress on with no search provider means
@@ -115,9 +155,17 @@ export type ToolPolicy = {
   files: boolean
   /** remember — local, no manager involvement */
   memory: boolean
+  /** search_history — local, and only for conversations the user indexed */
+  history: boolean
 }
 
-export const NO_TOOLS: ToolPolicy = { network: false, search: false, files: false, memory: false }
+export const NO_TOOLS: ToolPolicy = {
+  network: false,
+  search: false,
+  files: false,
+  memory: false,
+  history: false,
+}
 
 /**
  * Whether the turn has any tool at all.
@@ -127,7 +175,7 @@ export const NO_TOOLS: ToolPolicy = { network: false, search: false, files: fals
  * tools" gets none, which is the promise that mode makes.
  */
 export function hasAnyTool(policy: ToolPolicy): boolean {
-  return policy.memory || policy.network || policy.files
+  return policy.memory || policy.network || policy.files || policy.history
 }
 
 export function toolsFor(policy: ToolPolicy): ToolDef[] {
@@ -137,6 +185,9 @@ export function toolsFor(policy: ToolPolicy): ToolDef[] {
   if (policy.network && policy.search) tools.push(WEB_SEARCH)
   // The workspace is local: it does not care whether egress is on.
   if (policy.files) tools.push(...WORKSPACE_TOOLS)
+  // Retrieval is local too, and it is the one tool that reaches outside this
+  // conversation without leaving the machine.
+  if (policy.history) tools.push(SEARCH_HISTORY)
   // Last, and only when something else is already on: a model that reads the
   // clock without being asked about the date is doing something useful, but it
   // must not be the reason a "no tools" conversation suddenly has tools.
@@ -158,6 +209,8 @@ const WEB_GUIDANCE = `You also have web_read. Call it when a question needs a pa
 const SEARCH_GUIDANCE = `web_search finds pages; web_read reads one. Search first when you need a source you have no URL for, then read the result you trust — do not answer from snippets alone if the answer depends on detail.
 
 Be decisive with these. One search per question, then at most two pages, is enough for almost anything. If those do not contain the answer, say what you found and what you could not confirm — do not run more searches hoping for a better page. Never claim to have searched unless you called the tool, and never keep a citation you did not read.`
+
+const HISTORY_GUIDANCE = `You also have search_history, which searches the user's own conversations. Call it when the answer depends on something from a different chat — "what was the town I told you about in my travel chat" — or from earlier in this one after the beginning was summarised away. Search with the words that would appear in the message, not the words of the question: "Vellmarrow ferry" finds more than "what was the name of the town". One search is usually enough; if it returns nothing, say you could not find it in the indexed conversations and answer from what you do have. Do not invent a detail to fill the gap, and do not claim to remember something the search did not return.`
 
 /**
  * The `now` tool.
@@ -194,11 +247,12 @@ export function toolGuidance(policy: ToolPolicy): string {
     if (policy.search) parts.push(SEARCH_GUIDANCE)
   }
   if (policy.files) parts.push(WORKSPACE_GUIDANCE)
+  if (policy.history) parts.push(HISTORY_GUIDANCE)
   if (hasAnyTool(policy)) parts.push(NOW_GUIDANCE)
   return parts.join('\n\n')
 }
 
-const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH, ...WORKSPACE_TOOLS, NOW].map((t) => t.name))
+const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH, ...WORKSPACE_TOOLS, SEARCH_HISTORY, NOW].map((t) => t.name))
 
 function sameText(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
@@ -237,6 +291,7 @@ export async function runTool(
   if (name === 'list_files' || name === 'search_files' || name === 'read_file') {
     return runWorkspaceTool(name, args, opts.files)
   }
+  if (name === 'search_history') return searchHistory(args, opts.history)
   if (name === 'remember' && !opts.memory) {
     return {
       text: 'Tools are off in this conversation, so nothing was saved. Nothing else needs doing.',
@@ -284,6 +339,100 @@ export async function runTool(
   return {
     text: `Queued for the user to confirm: ${text}. It is not in your memory until they keep it, so do not say you have remembered it.`,
     record: { name, ok: true, summary: text, memoryId: id },
+  }
+}
+
+/** How much of one message the model sees. Enough to answer from, not a dump. */
+const SOURCE_CHARS = 600
+
+function clip(text: string, max = SOURCE_CHARS): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat
+}
+
+function day(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+/**
+ * `search_history`: retrieval over the user's own conversations.
+ *
+ * The result is written for a model to read, not for a human: numbered, with the
+ * conversation, the date and who said it, because "the user said X" and "you said
+ * X" are different evidence and a model that cannot tell them apart will attribute
+ * its own invention to the user.
+ *
+ * The record carries the same messages as `sources`, so the reply can show a chip
+ * per citation and the user can check the claim in one click. A retrieval the user
+ * cannot inspect is a retrieval they have to trust.
+ */
+async function searchHistory(args: Record<string, unknown>, allowed: boolean): Promise<ToolOutcome> {
+  const name = 'search_history'
+  if (!allowed) {
+    return {
+      text: 'History search is off in this conversation, so nothing was searched. Answer from what you have.',
+      record: { name, ok: false, summary: 'off in this conversation' },
+    }
+  }
+
+  const query = typeof args.query === 'string' ? args.query.trim() : ''
+  if (!query) {
+    return { text: 'Nothing was searched: "query" was empty.', record: { name, ok: false, summary: 'empty query' } }
+  }
+
+  const limit = Math.max(1, Math.min(20, Number(args.limit) || 8))
+
+  try {
+    const result = await searchVectors(query, { limit })
+    if (!result.hits.length) {
+      return {
+        text:
+          'No message in the indexed conversations matched that. The user may not have indexed the ' +
+          'conversation you are thinking of, or the detail may never have been written down. Say you ' +
+          'could not find it rather than guessing.',
+        record: { name, ok: true, summary: 'nothing found' },
+      }
+    }
+
+    const conversations = await db.listConversations()
+    const titles = new Map(conversations.map((c) => [c.id, c.title]))
+
+    const sources: ToolSource[] = result.hits.map((hit) => ({
+      conversationId: hit.conversationId,
+      messageId: hit.messageId,
+      title: titles.get(hit.conversationId) ?? 'untitled',
+      role: hit.role,
+      createdAt: hit.createdAt,
+      score: hit.score,
+    }))
+
+    const lines = result.hits.map((hit, i) => {
+      const who = hit.role === 'user' ? 'the user' : 'you'
+      const title = titles.get(hit.conversationId) ?? 'untitled'
+      return `${i + 1}. [${title} · ${day(hit.createdAt)} · ${who}] ${clip(hit.text)}`
+    })
+
+    const chats = new Set(result.hits.map((h) => h.conversationId)).size
+    return {
+      text:
+        `${result.hits.length} message${result.hits.length === 1 ? '' : 's'} from the user's history, ` +
+        `most relevant first${result.reranked ? '' : ' (relevance order only — no reranker is set up)'}:\n\n` +
+        lines.join('\n\n') +
+        '\n\nQuote what you use, and say which conversation it came from. If none of these answers the ' +
+        'question, say so instead of stretching one to fit.',
+      record: {
+        name,
+        ok: true,
+        summary: `${result.hits.length} from ${chats} chat${chats === 1 ? '' : 's'}`,
+        sources,
+      },
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return {
+      text: `History search failed: ${message}. Answer from what you have and say the search did not run.`,
+      record: { name, ok: false, summary: message },
+    }
   }
 }
 
