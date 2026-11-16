@@ -247,7 +247,7 @@ only if some case proves otherwise.
 
 `scripts/guard-tests.mjs:82` — `await rm(ROOT, { recursive: true, force: true })`
 before building its fixture. `--root .` from the repo, or a mistyped
-`--root C:/Users/Neo/…`, recursively wipes it with no prompt. This is a script we
+`--root C:/Users/you/…`, recursively wipes it with no prompt. This is a script we
 hand to strangers along with the source.
 
 **Fix.** Refuse a root that is not obviously disposable (name must end in `-guard`,
@@ -339,7 +339,7 @@ finding.
 `server/workspace/files.mjs` is the strongest code in the tree:
 
 - `under()` uses `path.relative`, and win32 `relative` is case-insensitive, so
-  `C:\Users\neo` vs `C:\Users\Neo` cannot be used to escape.
+  `C:\Users\you` vs `C:\Users\You` cannot be used to escape.
 - `safePath` checks the textual path **and then `realpath`** and checks again —
   the second check is what catches a symlink inside the root pointing out.
 - A non-existent leaf falls back to the textual path, but every caller then

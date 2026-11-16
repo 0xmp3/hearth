@@ -187,7 +187,7 @@ export default function ProfileDialog(props: Props) {
               <input
                 value={profileDraft.name}
                 onChange={(e) => setProfileDraft({ ...profileDraft, name: e.target.value })}
-                placeholder="e.g. Neo"
+                placeholder="e.g. Alex"
                 autoFocus
               />
             </label>
