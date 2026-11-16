@@ -1,0 +1,46 @@
+# The gate, as evidence.
+#
+# Until now the gate was a ritual in a notes file: typecheck, build, theme check,
+# tests — run by hand, on one machine, by the person who wrote it. This is the
+# same four commands in the same order, on a clean Windows runner, on every push.
+#
+# What it deliberately does not run:
+#   * `scripts/guard-tests.mjs` and `scripts/preview-attack-tests.mjs` — they need
+#     a live manager, a real browser, and (for the preview suite) a VM, because
+#     the fixture is deliberately hostile. They stay a manual acceptance test.
+#   * anything that needs a model. The suite is pure by design, so CI needs no
+#     GPU, no GGUF and no `data/` directory.
+#
+# Windows, not Linux, because that is the only platform this app claims. A green
+# check here means "the Windows build works", which is the honest claim; a Linux
+# job would prove something nobody has promised.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite is what stores the library, and it is stable from Node 24.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # The root package has no dependencies of its own: its postinstall installs
+      # app/, which is where every dependency lives.
+      - name: install
+        run: npm install --no-audit --no-fund
+
+      # typecheck (app + tests) → build → theme contract → vitest
+      - name: check
+        run: npm run check
