@@ -10,7 +10,7 @@
 // that accidentally succeeds is a real file read on a real machine.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { mkdtemp, mkdir, rm, writeFile, symlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, realpath, writeFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveRoot, safePath } from '../../../server/workspace/files.mjs'
@@ -25,6 +25,15 @@ beforeAll(async () => {
   await writeFile(join(root, 'inside.txt'), 'hello')
   await writeFile(join(root, 'sub', 'nested.txt'), 'nested')
   await writeFile(join(base, 'outside.txt'), 'secret')
+
+  // Canonicalise the root, because that is what the manager does: `resolveRoot()`
+  // is the only way a root ever reaches `safePath()`, and it returns the real
+  // path. This is not cosmetic — on a Windows CI runner the temp directory is an
+  // 8.3 short path (`C:\Users\RUNNER~1\…`), so a raw `join()` here compares a
+  // short root against long realpaths and every file inside it reads as
+  // "outside the workspace". It passed on a machine whose temp path was already
+  // canonical, which is exactly the kind of thing CI is for.
+  root = await realpath(root)
 })
 
 afterAll(async () => {
