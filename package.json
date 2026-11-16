@@ -1,0 +1,21 @@
+{
+  "name": "hearth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local-first chat app over llama.cpp — browser app, Node manager, your machine.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install-app.mjs",
+    "start": "node scripts/start.mjs",
+    "dev": "node scripts/start.mjs",
+    "manager": "node server/index.mjs",
+    "build": "npm --prefix app run build",
+    "typecheck": "npm --prefix app run typecheck",
+    "test": "npm --prefix app test",
+    "check": "npm --prefix app run typecheck && npm --prefix app run build && npm --prefix app run check:theme && npm --prefix app test"
+  }
+}

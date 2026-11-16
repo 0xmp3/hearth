@@ -3,9 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite",
     "manager": "node ../server/index.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "check:theme": "node ../scripts/check-theme.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
@@ -22,6 +26,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
   }
 }
