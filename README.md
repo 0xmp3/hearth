@@ -4,7 +4,7 @@
 
 A local-first chat app over llama.cpp. Your machine, your models, your history — no account, no telemetry, nothing leaves the box.
 
-![Hearth, mid-conversation with a local model](docs/media/conversation.png)
+![Hearth answering a prompt, then rendering the page it wrote beside the chat](docs/media/hearth-demo.gif)
 
 **The security audit is in the repo.** [docs/security-audit.md](docs/security-audit.md) — ten findings with `file:line`, the evidence that reproduced each one, the fix, and the residual risks this app does not claim to have closed. Two acceptance suites back it: 41 preview-sandbox attack checks and 21 path-guard checks, both run against a live manager in a VM.
 
@@ -34,6 +34,8 @@ A mission that doesn't constrain decisions is decoration. These are the constrai
 ## What's in it
 
 **Talking to a model.** Streaming replies with live tokens per second and token counts, stop mid-reply, regenerate, edit-and-resend, reasoning blocks, markdown with copy buttons, per-conversation system prompts, profiles and characters, and a `Ctrl+K` palette that searches your messages.
+
+![A conversation with a local model](docs/media/conversation.png)
 
 **Memory that belongs to someone.** Facts are scoped to a character or to one conversation, never app-wide, so a roleplay cannot leak into a coding chat. The model proposes a fact and you keep or forget it; a background pass reads the transcript and captures what the model missed. The injected block says what it is, which is what stops the model re-saving its own facts in different words.
 
