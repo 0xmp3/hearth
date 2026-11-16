@@ -384,9 +384,9 @@ the model supplies the pattern, so it is self-inflicted, but it is a
 | `npm audit --omit=dev` | **0 vulnerabilities** (run 2026-11-14 against `app/`) |
 | Manager dependencies | **none** — `server/` has no `package.json` and imports only `node:` builtins. No supply chain to audit on the component that spawns processes. |
 | Provider keys | **PASS** — Brave key lives in `data/config.json` (gitignored) or `HEARTH_BRAVE_KEY`; `/api/search` returns `hasKey` and never the value (`index.mjs:741-749`); nothing key-shaped is tracked in git (`git ls-files` clean) |
-| Backups are plaintext | **by design, documented** — an exported `.json` is the whole library. The UI must say so; that is a README/UI obligation, not a code fix. |
+| Backups are plaintext | **by design, documented, and now said in the UI** — an exported `.json` is the whole library in the clear, and the export dialog says so before the file is written. |
 | Metrics sampler | **PASS** — fixed script path from `import.meta.url` (`metrics/index.mjs:22`), no request input, `-ParentPid` guard, stopped on every exit path (`index.mjs:889-901`). PATH lookup is F-9. |
-| Import path | **not re-verified** — needs the shape/version validation re-read after the last schema change; small, and it belongs with Half B since a malformed-import test wants a throwaway browser profile. |
+| Import path | **re-verified 2026-11-16, and hardened.** Probed against a scratch library: a backup that throws mid-array **rolls back whole** — a valid record followed by `null` left every existing conversation and message untouched, so a partial write is not reachable. Two soft spots were found and fixed: a non-object "backup" imported zero conversations and reported success, and the manager trusted record shape and version entirely, so a blank conversation or a `version: 99` file was written as if understood. It now refuses all four cases before a row is written (`assertBackup`), and the app's `parseBackup` has tests. |
 
 ---
 

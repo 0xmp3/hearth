@@ -359,11 +359,53 @@ function exportAll(db) {
 }
 
 /**
+ * Refuse a backup that is not one, before a single row is written.
+ *
+ * The app validates before it sends, and that is the only validator a normal
+ * import meets. But this function is what stands between a file and the user's
+ * library, and it used to trust its argument completely: a string "imported"
+ * zero conversations and reported success, a record with no title was written as
+ * a blank chat, and a file from a future version was imported as if understood.
+ *
+ * A throw here is cheap and the transaction rolls back, so the rule is: anything
+ * this version could not faithfully restore is refused rather than partially
+ * applied. Version 1 is the first envelope; a newer one may carry fields this
+ * code would silently drop.
+ */
+function assertBackup(backup) {
+  if (!backup || typeof backup !== 'object' || Array.isArray(backup)) {
+    throw new Error('that is not a Hearth backup')
+  }
+  if (backup.format !== 'hearth-backup') throw new Error('that is not a Hearth backup')
+  if (!Number.isInteger(backup.version) || backup.version < 1 || backup.version > 5) {
+    throw new Error(`unsupported backup version: ${backup.version}`)
+  }
+  for (const key of ['conversations', 'messages']) {
+    if (!Array.isArray(backup[key])) throw new Error(`backup is missing ${key}`)
+  }
+  for (const c of backup.conversations) {
+    if (!c || typeof c.id !== 'string' || !c.id || typeof c.title !== 'string') {
+      throw new Error('a conversation in the backup is malformed')
+    }
+  }
+  for (const m of backup.messages) {
+    if (
+      !m || typeof m.id !== 'string' || !m.id ||
+      typeof m.conversationId !== 'string' || !m.conversationId ||
+      typeof m.content !== 'string'
+    ) {
+      throw new Error('a message in the backup is malformed')
+    }
+  }
+}
+
+/**
  * Merge, never replace: restoring into an empty database brings everything back,
  * and restoring into a populated one overwrites by id instead of destroying
  * whatever else is there.
  */
 function importAll(db, backup, only) {
+  assertBackup(backup)
   const conversations = only ? (backup.conversations ?? []).filter((c) => only.includes(c.id)) : (backup.conversations ?? [])
   const ids = new Set(conversations.map((c) => c.id))
   const messages = (backup.messages ?? []).filter((m) => ids.has(m.conversationId))
