@@ -619,7 +619,7 @@ const server = createServer((req, res) => {
   // ---- backend proxy ------------------------------------------------------
   //
   // The browser cannot talk to an arbitrary local server: most of them send no
-  // CORS headers (Strata's Python server does not), and the ones that do are the
+  // CORS headers (a Python server does not), and the ones that do are the
   // exception. So the manager proxies the two calls the app needs and the app
   // only ever talks to 127.0.0.1:8090.
   //

@@ -155,8 +155,8 @@ async function summarise(
     .join('\n')
 
   // Through the manager, like every other model call: a backend without CORS
-  // (Strata) is unreachable from the page, and compaction must not silently stop
-  // working just because the engine changed.
+  // (a Python server, say) is unreachable from the page, and compaction must
+  // not silently stop working just because the engine changed.
   const res = await fetch(`${MANAGER}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Hearth': '1' },

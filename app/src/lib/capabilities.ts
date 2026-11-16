@@ -15,8 +15,8 @@ export async function supportsVision(model: string): Promise<boolean> {
   const hit = cache.get(model)
   if (hit !== undefined) return hit
 
-  // The model list is the better source when the backend states it: Strata
-  // publishes `architecture.input_modalities`, and llama.cpp does not.
+  // The model list is the better source when the backend states it: some
+  // backends publish `architecture.input_modalities`, and llama.cpp does not.
   try {
     const info = (await listModels(BASE_URL)).find((m) => m.id === model)
     if (info?.vision !== undefined) {

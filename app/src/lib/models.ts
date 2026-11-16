@@ -1,7 +1,7 @@
 // What the backend can serve, and what each model can do.
 //
 // Two engines, two shapes: llama.cpp's router reports a child's launch args
-// (where `--ctx-size` lives) while a server like Strata reports the model's own
+// (where `--ctx-size` lives) while a Python backend reports the model's own
 // metadata (`meta.n_ctx`, `architecture.input_modalities`). Both are read here,
 // so the context bar and the vision check work either way.
 
@@ -27,8 +27,9 @@ function ctxFromArgs(args: unknown): number | undefined {
 }
 
 export async function listModels(baseUrl: string): Promise<ModelInfo[]> {
-  // Through the manager: a local backend that sends no CORS headers (Strata) is
-  // unreachable from the page, and this is the only call that needs the list.
+  // Through the manager: a local backend that sends no CORS headers (a Python
+  // server, say) is unreachable from the page, and this is the only call that
+  // needs the list.
   const res = await fetch(`${MANAGER}/api/models?baseUrl=${encodeURIComponent(baseUrl)}`, {
     headers: { 'X-Hearth': '1' },
   })

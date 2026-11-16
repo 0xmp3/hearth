@@ -1,40 +1,40 @@
 # Backend contract
 
-Everything below was captured live from `llama-server.exe` (ROCm build, `C:\llama.cpp`) on this machine on 2026-11-11. This is the only API we write against.
+Everything below was captured live from a `llama-server.exe` ROCm build on 2026-11-11. This is the only API we write against.
 
 ## Launch
 
 ```bash
-cd "/c/llama.cpp"
+cd /path/to/llama.cpp
 ./llama-server.exe \
-  -m "C:/Models/gemma-4-E4B-it-Q4_0.gguf" \
+  -m "C:/models/gemma-4-E4B-it-Q4_0.gguf" \
   --port 8088 -c 8192 -ngl 99 --jinja
 ```
 
 `--jinja` enables the model's chat template. `-ngl 99` offloads everything to the GPU.
 While the model loads, requests return `503` with `{"error":{"message":"Loading model"}}` — the app should show "starting model…" and retry, not error out.
 
-Ports in use on this box: **8080 = Strata**, **8088 = our llama-server**.
+Hearth's manager expects the backend on **8088** by default; any port works if you point Settings → Backend → Endpoint at it.
 
 ## Router mode (model selection)
 
 This build has a router server: one process, many models, loaded on demand.
 
 ```bash
-cd "/c/llama.cpp"
-./llama-server.exe --models-dir "C:/Models/served" --models-max 1 \
+cd /path/to/llama.cpp
+./llama-server.exe --models-dir "C:/models/served" --models-max 1 \
   --port 8088 -c 8192 -ngl 99 --jinja
 ```
 
 `GET /props` confirms it: `{"role":"router","max_instances":1,"models_autoload":true}`.
 
-**The directory must be flat.** Pointing `--models-dir` at `C:/Models` (which has subfolders) lists the *subfolders* as models — `Gemma`, `Qwen`, `Ornith` — and requesting one fails with `500 model name=Gemma failed to load`. Point it at a folder of `.gguf` files.
+**The directory must be flat.** Pointing `--models-dir` at `C:/models` (which has subfolders) lists the *subfolders* as models — `Gemma`, `Qwen`, `Ornith` — and requesting one fails with `500 model name=Gemma failed to load`. Point it at a folder of `.gguf` files.
 
-`C:/Models/served` is that folder, built from hardlinks so nothing is duplicated on disk:
+`C:/models/served` is that folder, built from hardlinks so nothing is duplicated on disk:
 
 ```bash
-mkdir -p /c/Models/served
-ln "/c/Models/Gemma/gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf" "/c/Models/served/gemma-4-26b-a4b-it-q4.gguf"
+mkdir -p /c/models/served
+ln "/c/models/gemma/gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf" "/c/models/served/gemma-4-26b-a4b-it-q4.gguf"
 ```
 
 `ln` on NTFS makes a hardlink (link count 2, zero extra bytes). Add or remove entries to change what the app can see.
@@ -52,7 +52,7 @@ ln "/c/Models/Gemma/gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf" "/c/Models/served/ge
         "value": "unloaded",
         "args": ["...llama-server.exe", "--host", "127.0.0.1", "--jinja",
                  "--port", "0", "--alias", "gemma-4-26b-a4b-it-q4",
-                 "--ctx-size", "8192", "--model", "C:/Models/served\\gemma-4-26b-a4b-it-q4.gguf",
+                 "--ctx-size", "8192", "--model", "C:/models/served\\gemma-4-26b-a4b-it-q4.gguf",
                  "--n-gpu-layers", "99"]
       }
     }
@@ -72,7 +72,7 @@ ln "/c/Models/Gemma/gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf" "/c/Models/served/ge
   "object": "list",
   "data": [
     {
-      "id": "C:/Models/gemma-4-E4B-it-Q4_0.gguf",
+      "id": "C:/models/gemma-4-E4B-it-Q4_0.gguf",
       "object": "model",
       "created": 0,
       "owned_by": "llamacpp"
@@ -153,10 +153,4 @@ Same body with `"stream": false`. Chosen keys from the verified response:
 | Prompt processing | ~127 (cold), cache hits skip this |
 | Generation | **~92** |
 
-For comparison, Strata on DeepSeek V4.1 Flash IQ2_XXS runs ~10 tok/s — so the Gemma build is our iteration loop and DeepSeek is the "does it hold up on a real model" test.
-
-## Unverified / to check in phase 0
-
-1. `curl 127.0.0.1:8080/v1/models` with Strata running — does it expose the OpenAI API or only its own pack protocol over the control socket in `AppData\Local\Strata\runtime\launch-*.json`?
-2. Whether this llama.cpp build loads `deepseek41` arch (`C:/Models/Deepseek-V4.1-Flash/IQ2_XXS/...00001-of-00006.gguf`).
-3. ~~Whether `/v1/models` can list more than one model~~ — answered: router mode does, see above. Per-model flags are the remaining gap, which is what a launcher would solve.
+A larger model at a lower quantisation runs an order of magnitude slower, which is why the small build is the iteration loop and a big one is the "does it hold up on a real model" test.

@@ -1,8 +1,12 @@
 # Hearth
 
+[![ci](https://github.com/0xmp3/hearth/actions/workflows/ci.yml/badge.svg)](https://github.com/0xmp3/hearth/actions/workflows/ci.yml)
+
 A local-first chat app over llama.cpp. Your machine, your models, your history — no account, no telemetry, nothing leaves the box.
 
 ![Hearth, mid-conversation with a local model](docs/media/conversation.png)
+
+**The security audit is in the repo.** [docs/security-audit.md](docs/security-audit.md) — ten findings with `file:line`, the evidence that reproduced each one, the fix, and the residual risks this app does not claim to have closed. Two acceptance suites back it: 41 preview-sandbox attack checks and 21 path-guard checks, both run against a live manager in a VM.
 
 ## What it is
 
@@ -86,7 +90,7 @@ Then open **http://localhost:5173**.
 
 **Alpha, 0.1.0.** Windows-only, single-user, no support. The `v1.x` tags in this repository are internal build history from before publication; the public line starts here.
 
-**Verified on two machines.** The development machine — Windows 11, RX 9070 XT (16 GB), 64 GB RAM, Node 24 — where: the app builds and runs, a real model answers through the manager, the library survives a full site-data clear, retrieval returns the right message with a reranker, the preview panel renders and its attack suite passes 41/41, the workspace guard passes 21/21, and the engine, model and reranker downloads verify their digests. `npm test` runs 82 unit tests over the pure modules in under a second, and CI runs the same gate on every push.
+**Verified on two machines.** The development machine — Windows 11, RX 9070 XT (16 GB), 64 GB RAM, Node 24 — where: the app builds and runs, a real model answers through the manager, the library survives a full site-data clear, retrieval returns the right message with a reranker, the preview panel renders and its attack suite passes 41/41, the workspace guard passes 21/21, and the engine, model and reranker downloads verify their digests. `npm test` runs 90 unit tests over the pure modules in under a second, and CI runs the same gate on every push.
 
 And a **clean Windows 11 Pro VM** (Ryzen 5, 6 cores, 8 GB RAM, no GPU) that started with no git, no Node and no models: `winget` for git and Node, the tree extracted from a ZIP, `npm install`, `npm start`, the engine downloaded and its digest verified, the 4.6 GB model downloaded and **its digest checked against the pin**, the server started, and a real reply came back at 8.5 tok/s on CPU.
 

@@ -52,7 +52,7 @@ export function useHearth(
   const [models, setModels] = useState<ModelInfo[]>([])
 
   // A conversation remembers the model it was using. If the backend no longer
-  // serves it — you switched from Strata back to llama.cpp — fall back to the
+  // serves it — you switched backends — fall back to the
   // first model instead of sending an id the server will reject.
   const resolveModel = (id?: string | null) =>
     id && models.some((m) => m.id === id) ? id : models[0]?.id ?? ''

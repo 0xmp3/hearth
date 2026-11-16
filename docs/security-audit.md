@@ -139,7 +139,7 @@ it cannot reach the manager. A proxy that accepts any URL is the primitive such 
 bug would want.
 
 **Fix.** Allowlist `baseUrl` to loopback by default, with the external-backend
-case (`docs/backend.md` / Strata on 8080) as an explicit config opt-in that names
+case (an external backend on another port) as an explicit config opt-in that names
 the allowed origin. Failing that, run it through `checkUrl` with a loopback
 exemption for exactly the configured backend.
 
@@ -553,5 +553,5 @@ prevent), engine adoption + Settings **12/12**, `tsc`/`build`/`check:theme` clea
 - **Residual risks 1–4 below are untouched** — the SearXNG tarball has no signature,
   the engine digest anchors on the releasing account, DNS rebinding is open, and
   CSP cannot govern WebRTC.
-- **The import path was not re-read** this session. It is the one secondary item
-  still owed.
+- **No secondary item is outstanding.** The import path was re-verified on
+  2026-11-16 and hardened (`assertBackup`); see the table above.

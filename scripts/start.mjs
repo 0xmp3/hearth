@@ -12,8 +12,8 @@
 //     leaves two llama-servers; so an answering manager is reused, not replaced.
 //   * **Ctrl+C asks the manager to stop before the process is killed.** The
 //     manager stops llama-server through its own child handle; killing it first
-//     orphans the engine on 8088, and Hearth and Strata share llama.cpp on this
-//     machine. `/api/stop` first, `kill` as the backstop.
+//     orphans the engine on 8088, and another local app may share llama.cpp on
+//     the same machine. `/api/stop` first, `kill` as the backstop.
 //   * **A wrong Node says so.** `node:sqlite` arrives in Node 24, and without it
 //     the manager dies on `import` with an error that names the module and not
 //     the cause.
