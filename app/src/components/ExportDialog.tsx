@@ -80,6 +80,11 @@ export default function ExportDialog({ onClose, conversations, activeId, onExpor
           </ul>
         </div>
       )}
+
+      <p className="hint">
+        A backup is plain text: every message, prompt and memory in the file, readable by
+        anything that opens it. Store it like a document, not like a password.
+      </p>
     </Dialog>
   )
 }
