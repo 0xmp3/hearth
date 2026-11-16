@@ -19,7 +19,7 @@
 //
 // What this file does *not* do: decide a similarity floor. EmbeddingGemma scores
 // unrelated text at ~0.43, so any threshold chosen by eye returns either
-// everything or nothing. That number comes from the test corpus in docs/rag.md.
+// everything or nothing. That number comes from the retrieval test corpus measured when this was built.
 
 import * as db from './db'
 import * as store from './store'

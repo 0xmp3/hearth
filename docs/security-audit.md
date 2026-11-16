@@ -1,10 +1,9 @@
 # Security audit
 
 **Status: complete, and fixed in v1.44.** Audited at `4df63a8` (v1.43), 2026-11-14,
-in the Win11 guest (`192.168.183.134`). Scope fixed in `PLAN.md` §Security audit:
-the six items where a bug hurts the person *running* the app. The audit itself is
-findings-only — the fixes are v1.44 and are logged at the bottom of this file with
-the check that proves each one.
+in a Windows 11 test VM. Scope: the six items where a bug hurts the person
+*running* the app. The audit itself is findings-only — the fixes are v1.44 and are
+logged at the bottom of this file with the check that proves each one.
 
 The question being answered is **"is it safe for someone else to run"** — not "is
 the source safe to read". Source visibility is the cheap ring: nothing is
@@ -418,7 +417,7 @@ publishing; all of them stop us claiming "secure".
 
 ## Half B — what ran in the guest
 
-Guest `DESKTOP-O2U09T1`, `192.168.183.134`, Node 24.11. `C:\hearth` re-synced from
+The guest was a Windows 11 test VM with Node 24.11; the tree was re-synced from
 a `git archive` of `4df63a8` (plus the three harness additions below), manager on
 `127.0.0.1:8090`, vite on `[::1]:5173`. No model, no engine — none is needed for
 any of this.

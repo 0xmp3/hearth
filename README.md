@@ -25,7 +25,7 @@ A mission that doesn't constrain decisions is decoration. These are the constrai
 - **Accessible means no gatekeeping.** No account, no subscription, no telemetry, no cloud dependency. It runs on your machine, against your models, and works with the network unplugged.
 - **"Your own" means it bends.** Themes, profiles, per-conversation prompts, your own backend. A starting point, not a fixed product.
 - **A showcase means the code has to be readable.** Small files, one job each, comments that explain *why* rather than *what*. The git history is part of the deliverable — someone should be able to follow the reasoning, not just the result.
-- **It stays a personal tool.** Serving thousands of users is a different product with a different trust model. That's a fork, not a feature — see [backlog.md](backlog.md).
+- **It stays a personal tool.** Serving thousands of users is a different product with a different trust model. That's a fork, not a feature.
 
 ## What's in it
 
@@ -110,13 +110,10 @@ And a **clean Windows 11 Pro VM** (Ryzen 5, 6 cores, 8 GB RAM, no GPU) that star
 
 **MIT** — see [LICENSE](LICENSE). Use it, fork it, build on it, keep the copyright line, no warranty.
 
-## Running documents
+## Documents
 
 | File | What's in it |
 |---|---|
-| [PLAN.md](PLAN.md) | Scope, decisions, phases, exit criteria, and the traps already hit |
-| [backlog.md](backlog.md) | Every idea that is not in the current phase |
-| [docs/readiness.md](docs/readiness.md) | What stood between the tree and being publishable, and what closed it |
-| [docs/security-audit.md](docs/security-audit.md) | The audit: findings, evidence, fixes, residual risks |
+| [AGENTS.md](AGENTS.md) | How to run it, the gate, and the conventions that matter if you change the code |
+| [docs/security-audit.md](docs/security-audit.md) | The audit: findings, evidence, fixes, and the residual risks listed above |
 | [docs/backend.md](docs/backend.md) | The exact HTTP contract, with verified sample responses |
-| [docs/rag.md](docs/rag.md) | Retrieval: design, the test corpus, and the measurements |

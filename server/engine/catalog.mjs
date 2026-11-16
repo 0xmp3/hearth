@@ -5,7 +5,7 @@
 //   lemonade — llama.cpp + ROCm with the runtime bundled in, one archive per
 //              GPU family. This is the only Windows AMD build that works
 //              without a separate ROCm install; the official ROCm asset loads
-//              but silently runs on the CPU (see PLAN.md).
+//              but silently runs on the CPU.
 //
 //   official — ggml-org/llama.cpp releases. CUDA for NVIDIA, Vulkan for
 //              everything else, Metal on macOS.

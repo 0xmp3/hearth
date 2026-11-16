@@ -48,7 +48,7 @@ const DEFAULTS = {
    * 40-message corpus the card's document prompt ranked the answer 3rd, 1st and
    * 6th, where the query prompt on documents gave 7th, 2nd and 15th. A 6-message
    * fixture had suggested the opposite, which is why both are configuration and
-   * the calibration set in docs/rag.md decides.
+   * the calibration corpus measured at the time decides.
    */
   prefix: 'title: none | text: ',
   queryPrefix: 'task: search result | query: ',
@@ -234,7 +234,7 @@ async function ensureServer(dataDir) {
 
 // One request at a time. The server has a single slot, and two concurrent
 // batches do not queue politely — the same lesson the memory and compaction
-// passes taught (PLAN.md trap 14).
+// passes taught: serialise the background calls.
 let chain = Promise.resolve()
 function serialise(fn) {
   const run = chain.then(fn, fn)
