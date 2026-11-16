@@ -17,8 +17,20 @@ export function nearestStopIndex(value: number): number {
   return best
 }
 
+/**
+ * One decimal place, but no pointless `.0`.
+ *
+ * The condition used to be "is it an exact multiple", which is the wrong
+ * question: 1024 is not a multiple of 1000, so it rendered as `1.0k` — the
+ * label for the most common stops in the list. Format first, then drop the
+ * zero.
+ */
+function short(x: number): string {
+  return x.toFixed(1).replace(/\.0$/, '')
+}
+
 export function formatTokens(n: number): string {
-  if (n >= 1048576) return `${(n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1)}M`
-  if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`
+  if (n >= 1048576) return `${short(n / 1048576)}M`
+  if (n >= 1000) return `${short(n / 1000)}k`
   return String(n)
 }

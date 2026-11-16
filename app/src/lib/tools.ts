@@ -317,7 +317,13 @@ export function toolGuidance(policy: ToolPolicy): string {
 
 const KNOWN = new Set([...TOOLS, WEB_READ, WEB_SEARCH, ...WORKSPACE_TOOLS, SEARCH_HISTORY, NOW].map((t) => t.name))
 
-function sameText(a: string, b: string) {
+/**
+ * Is this the same fact, rephrased?
+ *
+ * Exported for the test suite: the threshold is a measured decision, and the
+ * only way it stays one is if a test fails when somebody moves it.
+ */
+export function sameText(a: string, b: string) {
   if (a.trim().toLowerCase() === b.trim().toLowerCase()) return true
   const A = words(a)
   const B = words(b)

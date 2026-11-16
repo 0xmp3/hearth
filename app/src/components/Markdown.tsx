@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import type { TextStyle } from '../lib/db'
+import { tidy } from '../lib/text'
 
 // Every fenced block gets its own copy button. Reading innerText off the
 // rendered <pre> means we copy exactly what the user sees, highlight spans
@@ -32,13 +33,8 @@ function Pre(props: any) {
 }
 
 // The model pads, and every tool round adds a paragraph break, so three or more
-// newlines is always noise. Fenced code is left exactly as written.
-function tidy(text: string): string {
-  return text
-    .split(/(```[\s\S]*?```)/g)
-    .map((part, i) => (i % 2 ? part : part.replace(/\n{3,}/g, '\n\n')))
-    .join('')
-}
+// newlines is always noise — the collapse itself lives in `lib/text.ts` so it
+// can be tested, and fenced code is left exactly as written.
 
 /**
  * How long an emphasised phrase may be before it is left alone.

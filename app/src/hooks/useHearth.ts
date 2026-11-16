@@ -5,25 +5,19 @@ import { useEffect, useRef, useState } from 'react'
 import * as db from '../lib/db'
 import { listModels, type ModelInfo } from '../lib/models'
 import { agentTurn, type TurnDriver } from '../lib/turn'
-import { NO_TOOLS, runTool as executeTool, toolGuidance, type ToolPolicy } from '../lib/tools'
+import { NO_TOOLS, runTool as executeTool, type ToolPolicy } from '../lib/tools'
+import { buildHistory as assembleHistory } from '../lib/history'
 import { BASE_URL, SYSTEM_PROMPT } from '../lib/config'
 import { currentDateBlock } from '../lib/clock'
 import { suggestTitle } from '../lib/title'
 import { indexConversation, dropConversationIndex } from '../lib/vectors'
 import type { ChatMessage, ContentPart, Stats } from '../lib/stream'
 import { toDataUrl, type Attachment } from '../lib/attachments'
+import { CAPTURE_EVERY, applyExtraction, extractMemories } from '../lib/memory'
 import {
-  CAPTURE_EVERY,
-  applyExtraction,
-  buildMemoryBlock,
-  extractMemories,
-} from '../lib/memory'
-import {
-  buildSummaryBlock,
   compactConversation,
   currentSummary,
   factsOf,
-  historyAfter,
   shouldCompact,
 } from '../lib/compaction'
 
@@ -173,51 +167,27 @@ export function useHearth(
   }
 
   async function buildHistory(msgs: db.Message[], conv: db.Conversation): Promise<ChatMessage[]> {
-    // Character first (who you are), then the conversation's own prompt (what
-    // this chat is about). Either can be empty.
-    const character = resolveCharacter?.(conv.characterId)?.systemPrompt?.trim()
-    // Who you are, who the model is, what is known about the user, what this chat is about.
-    const profile = resolveProfile?.(conv.profileId)?.description?.trim()
-    // Read fresh rather than from state: a fact or a summary written by the
-    // background passes after the last render must be in this request.
-    const stored = await db.listMemories()
-    const summary = currentSummary(stored, conv.id)
-    // The *resolved* character, not the raw field. A conversation that inherits
-    // the active character stores `undefined`, and `undefined ?? null` is null —
-    // which matched no character fact at all, so every character memory was
-    // saved, listed, and never injected. The character prompt was applied
-    // (resolveCharacter handles the inherit case) while its memories were not,
-    // which is why the chat still looked right: the scenario carried the setting.
-    const memory = buildMemoryBlock(stored, conv.id, resolveCharacter?.(conv.characterId)?.id ?? null)
-    // Tools are on for every turn, so the guidance is always relevant.
-    const system = [
-      // First, because it frames everything after it — who you are, who the
-      // model is, what this chat is about all sit inside a particular day. A
-      // conversation that wants a different one (roleplay in another era) can
-      // say so in its own prompt, which comes later and wins by position.
-      currentDateBlock(),
-      profile,
-      character,
-      buildSummaryBlock(summary),
-      memory,
-      toolGuidance(policyForConv(conv)),
-      conv.systemPrompt?.trim() || SYSTEM_PROMPT,
-    ]
-      .filter(Boolean)
-      .join('\n\n')
-    // The oldest turns are represented by the summary, not sent again.
-    const live = historyAfter(msgs, summary)
-    return [
-      ...(system ? [{ role: 'system' as const, content: system }] : []),
-      // An assistant turn that produced no text (thinking ate the budget, or
-      // the user stopped it before the first token) is noise to the model and
-      // makes it reason about "the empty response" instead of the question.
-      ...(await Promise.all(
-        live
-          .filter((m) => m.content.trim().length > 0 || (m.attachments?.length ?? 0) > 0)
-          .map(toChatMessage),
-      )),
-    ]
+    // The assembly itself lives in `lib/history.ts` so it can be tested without a
+    // browser; what stays here is what needs the app: the resolver, the store and
+    // the browser's attachment handling.
+    return assembleHistory(
+      msgs,
+      conv,
+      {
+        // Read fresh rather than from state: a fact or a summary written by the
+        // background passes after the last render must be in this request.
+        memories: await db.listMemories(),
+        // Resolved once, for the prompt *and* the memory owner. Resolving twice
+        // is how `undefined` became `null` at one call site and not the other,
+        // leaving every character fact saved, listed and never injected.
+        character: resolveCharacter?.(conv.characterId) ?? null,
+        profile: resolveProfile?.(conv.profileId) ?? null,
+        date: currentDateBlock(),
+        policy: policyForConv(conv),
+        defaultPrompt: SYSTEM_PROMPT,
+      },
+      toChatMessage,
+    )
   }
 
   // A reply streams for a while and the conversation can change underneath it
