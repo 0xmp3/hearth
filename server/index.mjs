@@ -31,6 +31,7 @@ import * as tts from './tts/index.mjs'
 import * as embed from './embed/index.mjs'
 import * as rerank from './rerank/index.mjs'
 import * as rerankDownload from './rerank/download.mjs'
+import * as modelDownload from './models/download.mjs'
 import * as store from './db/index.mjs'
 import * as ws from './workspace/files.mjs'
 import {
@@ -673,6 +674,30 @@ const server = createServer((req, res) => {
         res.end(text)
       })
       .catch((err) => json(res, 502, { error: `backend unreachable: ${err.message}` }))
+    return
+  }
+
+  // ---- chat models ---------------------------------------------------------
+  //
+  // The one download a first run actually needs. Fire-and-forget on POST: the UI
+  // polls the progress object, because 4.6 GB must not hold a request open.
+
+  if (req.method === 'GET' && url.pathname === '/api/models/download') {
+    modelDownload
+      .describeDownloads(DATA)
+      .then((state) => json(res, 200, state))
+      .catch((err) => json(res, 500, { error: err.message }))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/models/download') {
+    readBody(req, 1e4)
+      .then((buf) => {
+        const body = buf.length ? JSON.parse(buf.toString()) : {}
+        modelDownload.downloadModel(DATA, body.id).catch((err) => push(`[models] ${err.message}`))
+        json(res, 200, { started: true, id: body.id ?? null })
+      })
+      .catch((err) => json(res, 400, { error: err.message }))
     return
   }
 

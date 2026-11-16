@@ -25,6 +25,8 @@ type Props = {
   onJumpToSource?: (conversationId: string, messageId: string) => void
   /** A message to scroll to, set when a citation chip is clicked. */
   jumpTo?: string | null
+  /** No model is loaded, so the empty state has to say what to do about it. */
+  noModels?: boolean
 }
 
 export default function Chat({
@@ -44,6 +46,7 @@ export default function Chat({
   hueFor,
   onJumpToSource,
   jumpTo,
+  noModels,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -86,6 +89,12 @@ export default function Chat({
         <div className="empty">
           <p className="empty-mark">hearth</p>
           <p className="hint">A quiet place to talk to a model on your own machine.</p>
+          {noModels && (
+            <p className="hint">
+              No model is loaded yet. Settings → Backend can download one (4.6 GB, verified), or
+              point the app at a <code>llama-server</code> you already run.
+            </p>
+          )}
         </div>
       ) : (
         messages.map((m, i) => (

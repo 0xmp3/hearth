@@ -602,6 +602,7 @@ export default function App() {
             messages={h.messages}
             streaming={h.streaming}
             jumpTo={jumpTo}
+            noModels={h.models.length === 0}
             onJumpToSource={(conversationId, messageId) => {
               if (conversationId !== h.activeId) h.select(conversationId)
               setJumpTo(messageId)

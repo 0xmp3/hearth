@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ctxFromArgs, manager, type ManagerStatus } from '../lib/backend'
 import { formatTokens } from '../lib/budget'
 import EnginePanel from './EnginePanel'
+import ModelPanel from './ModelPanel'
 
 // Optional process control. If the manager is not running, this says so and
 // nothing else in the app changes — the app still talks to whatever server is
@@ -75,6 +76,7 @@ export default function BackendPanel({ onServerChanged }: { onServerChanged?: ()
   return (
     <div className="manager">
       <EnginePanel onChanged={onServerChanged} />
+      <ModelPanel onChanged={onServerChanged} />
 
       <div className="manager-row">
         <span className={`dot ${status.running ? 'on' : 'off'}`} />

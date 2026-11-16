@@ -231,6 +231,32 @@ export type RerankDownloadState = {
   }
 }
 
+/** One downloadable chat model, and whether it is already on disk. */
+export type ModelDownloadEntry = {
+  id: string
+  name: string
+  note: string
+  file: string
+  path: string
+  size: number
+  installed: boolean
+  bytes: number
+}
+
+export type ModelDownloadState = {
+  dir: string
+  /** The models folder the app is actually using, or null if none is set. */
+  modelsDir: string | null
+  entries: ModelDownloadEntry[]
+  progress: {
+    phase: 'idle' | 'downloading' | 'verifying' | 'done' | 'error'
+    got: number
+    total: number
+    file: string | null
+    error: string | null
+  }
+}
+
 export const manager = {
   status: () => call<ManagerStatus>('/api/status'),
   /** Egress is the manager's decision; the app only asks. */
@@ -304,6 +330,12 @@ export const manager = {
   rerankDownloads: () => call<RerankDownloadState>('/api/rerank/download'),
   downloadReranker: (id: string) =>
     call<{ started: boolean; id: string | null }>('/api/rerank/download', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+  modelDownloads: () => call<ModelDownloadState>('/api/models/download'),
+  downloadModel: (id: string) =>
+    call<{ started: boolean; id: string | null }>('/api/models/download', {
       method: 'POST',
       body: JSON.stringify({ id }),
     }),

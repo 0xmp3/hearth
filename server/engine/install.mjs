@@ -3,14 +3,13 @@
 // The download is deliberately not automatic: the caller starts it, and the
 // progress object is polled by the UI. Nothing here runs on its own.
 
-import { createWriteStream } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 
+import { downloadToFile } from '../net/download.mjs'
 import { MARKER } from './resolve.mjs'
 
 const run = promisify(execFile)
@@ -109,26 +108,6 @@ export async function resolveAsset(source) {
   }
 }
 
-async function download(url, dest, onProgress) {
-  const res = await fetch(url, { redirect: 'follow' })
-  if (!res.ok) throw new Error(`download failed: HTTP ${res.status}`)
-
-  const total = Number(res.headers.get('content-length') ?? 0)
-  const hash = createHash('sha256')
-  const out = createWriteStream(dest)
-  let got = 0
-
-  for await (const chunk of res.body) {
-    got += chunk.length
-    hash.update(chunk)
-    if (!out.write(chunk)) await new Promise((r) => out.once('drain', r))
-    onProgress(got, total)
-  }
-
-  await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())))
-  return hash.digest('hex')
-}
-
 async function extract(archive, dest) {
   await mkdir(dest, { recursive: true })
   // Windows ships bsdtar, which reads zip. GNU tar (git-bash) does not, so the
@@ -169,7 +148,7 @@ export async function install(source, dest) {
     archive = join(dest, asset.filename)
 
     progress.phase = 'downloading'
-    const actual = await download(asset.url, archive, (got, total) => {
+    const actual = await downloadToFile(asset.url, archive, (got, total) => {
       progress.got = got
       if (total) progress.total = total
     })

@@ -12,11 +12,11 @@
 // Measured on this machine: bge-reranker-v2-m3-Q8_0 is 636 MB, loads in ~2 s, and
 // reranks 10 candidates in ~350 ms on the CPU.
 
-import { createWriteStream, existsSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
+import { downloadToFile } from '../net/download.mjs'
 import { rerankConfig, saveRerankConfig } from './index.mjs'
 
 const MARKER = '.installed.json'
@@ -75,26 +75,6 @@ function reset() {
   progress.error = null
 }
 
-async function download(url, dest, onProgress) {
-  const res = await fetch(url, { redirect: 'follow' })
-  if (!res.ok) throw new Error(`download failed: HTTP ${res.status}`)
-
-  const total = Number(res.headers.get('content-length') ?? 0)
-  const hash = createHash('sha256')
-  const out = createWriteStream(dest)
-  let got = 0
-
-  for await (const chunk of res.body) {
-    got += chunk.length
-    hash.update(chunk)
-    if (!out.write(chunk)) await new Promise((r) => out.once('drain', r))
-    onProgress(got, total)
-  }
-
-  await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())))
-  return hash.digest('hex')
-}
-
 /**
  * Download one catalog entry into `data/models/reranker` and make it the model.
  *
@@ -132,7 +112,7 @@ export async function downloadReranker(dataDir, id) {
     progress.total = entry.size
     partial = `${dest}.part`
 
-    const actual = await download(entry.url, partial, (got, total) => {
+    const actual = await downloadToFile(entry.url, partial, (got, total) => {
       progress.got = got
       if (total) progress.total = total
     })
