@@ -1,0 +1,21 @@
+{
+  "id": "harbour-incident",
+  "title": "Dock scheduling outage at Harbour Freight",
+  "messages": [
+    { "id": "b1", "role": "user", "text": "The dock scheduling service at Harbour Freight fell over again at 04:12 and the night shift could not dispatch the 05:00 manifest." },
+    { "id": "b2", "role": "assistant", "text": "That is the second failure this month at the same hour, which points at something scheduled rather than load. What does the service log say immediately before it stops responding?" },
+    { "id": "b3", "role": "user", "text": "It holds a database connection open while it polls S3 for the manifest object, and when the key is missing it retries forever instead of failing." },
+    { "id": "b4", "role": "assistant", "text": "So the missing key is the trigger and the retry is the amplifier. A poll loop that cannot distinguish absent from delayed will never terminate." },
+    { "id": "b5", "role": "user", "text": "The retry loop is the connection exhaustion: about 40 attempts a second, each one grabbing a pooled connection and never releasing it." },
+    { "id": "b6", "role": "assistant", "text": "Then the pool empties in under a minute and everything behind it queues. Capping attempts and closing the connection per attempt fixes the amplification, not just the symptom." },
+    { "id": "b7", "role": "user", "text": "We renamed the monitoring stack to Lighthouse last quarter, so the alerts now come from lighthouse-dock rather than the old service name, which confused the on-call rota." },
+    { "id": "b8", "role": "assistant", "text": "Alert source renames are worth a line in the runbook, the rota reads the sender not the payload. Update the escalation names in the same change." },
+    { "id": "b9", "role": "user", "text": "I want the manifest job to fail fast after three attempts and push the batch to a dead-letter queue that the ops team actually watches." },
+    { "id": "b10", "role": "assistant", "text": "Three attempts then dead-letter is the right shape. The queue only works if someone owns it, so put the drain on the same rota as the alerts." },
+    { "id": "b11", "role": "user", "text": "The ferry manifests themselves are only about 200 rows a day, so volume was never the problem. It was entirely the retry behaviour." },
+    { "id": "b12", "role": "assistant", "text": "Two hundred rows a day is nothing. Worth saying that out loud in the note, because it closes off the obvious wrong conclusion about scale." },
+    { "id": "b13", "role": "user", "text": "Ticket is DOCK-4471 and the client wants a post-incident note by Friday." },
+    { "id": "b14", "role": "assistant", "text": "DOCK-4471 noted. The note should carry the timeline, the retry amplification, and the three changes: attempt cap, dead-letter queue, and the alert rename." },
+    { "id": "b15", "role": "user", "text": "The 05:00 dispatch is automated from the manifest now, so the night shift only confirms it rather than keying it in." }
+  ]
+}

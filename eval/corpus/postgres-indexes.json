@@ -1,0 +1,21 @@
+{
+  "id": "postgres-indexes",
+  "title": "Events table query plan",
+  "messages": [
+    { "id": "c1", "role": "user", "text": "Our events table is 40 million rows and the dashboard query takes 11 seconds, which is past the point where anyone uses the dashboard." },
+    { "id": "c2", "role": "assistant", "text": "Eleven seconds is a plan problem before it is a hardware problem. Get EXPLAIN ANALYZE on exactly the query the dashboard sends, not a simplified version of it." },
+    { "id": "c3", "role": "user", "text": "EXPLAIN ANALYZE shows a sequential scan filtering on tenant_id and created_at, even though there is an index on each of those columns separately." },
+    { "id": "c4", "role": "assistant", "text": "Two single-column indexes cannot serve an equality plus a range on the same table cheaply. A composite index on tenant_id first, created_at second is what turns that into an index range scan." },
+    { "id": "c5", "role": "user", "text": "Adding the composite index with created_at descending dropped the query to 90ms, from 11 seconds." },
+    { "id": "c6", "role": "assistant", "text": "That is the expected shape: the planner now reads a contiguous range instead of filtering 40 million rows. Keep the descending order only if the dashboard always sorts newest first." },
+    { "id": "c7", "role": "user", "text": "The write path got slower though. Inserts went from about 4k a second to 3.1k." },
+    { "id": "c8", "role": "assistant", "text": "That is the cost of the extra index page writes. Judge it against what the read bought you rather than in isolation." },
+    { "id": "c9", "role": "user", "text": "I'm keeping the composite index. The dashboard is read-mostly and the insert cost is acceptable for a quarter, but I want it re-measured if write volume grows." },
+    { "id": "c10", "role": "assistant", "text": "Sensible, with a trigger to revisit. Write the threshold down or the review never happens." },
+    { "id": "c11", "role": "user", "text": "The Lighthouse project datasource was the one that regressed worst, because it writes a row per event instead of batching them." },
+    { "id": "c12", "role": "assistant", "text": "Row-per-event is the pattern that makes an index expensive. Batching collapses many index maintenance operations into one per statement." },
+    { "id": "c13", "role": "user", "text": "I'll batch the inserts at 500 rows per statement and re-measure, and add a partial index on tenant_id where payload is null for the cleanup job." },
+    { "id": "c14", "role": "assistant", "text": "Both are the right kind of change: one reduces index churn, the other keeps the cleanup job off the main index entirely." },
+    { "id": "c15", "role": "user", "text": "Vacuum has not run on that table in six weeks because a long-running transaction has been holding it back." }
+  ]
+}

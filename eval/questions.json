@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "note": "Gold ids point at the single message that answers the question. `expect: null` means the corpus contains no answer, so retrieval cannot be scored for correctness — those questions exist to measure whether the top scores separate from answerable ones.",
+  "questions": [
+    { "id": "q01", "question": "What time does the ferry leave Corran Quay?", "expect": "a3" },
+    { "id": "q02", "question": "Which inn did I book and how do I recognise it?", "expect": "a5" },
+    { "id": "q03", "question": "How long is the walk out to the lighthouse and back?", "expect": "a7" },
+    { "id": "q04", "question": "Why am I driving to the quay instead of taking the train?", "expect": "a9" },
+    { "id": "q05", "question": "What is the budget for the week?", "expect": "a11" },
+    { "id": "q06", "question": "Why don't I want another boat trip?", "expect": "a13" },
+    { "id": "q07", "question": "What will I do if the weather turns while I'm there?", "expect": "a15" },
+    { "id": "q08", "question": "Which coastal town did I pick for the week away?", "expect": "a1" },
+    { "id": "q09", "question": "How many nights am I staying at the inn?", "expect": "a5" },
+    { "id": "q10", "question": "What time did the dock scheduling service fail?", "expect": "b1" },
+    { "id": "q11", "question": "What causes the connection exhaustion at Harbour Freight?", "expect": "b3" },
+    { "id": "q12", "question": "What is the monitoring stack called now?", "expect": "b7" },
+    { "id": "q13", "question": "How many rows a day are the ferry manifests?", "expect": "b11" },
+    { "id": "q14", "question": "What is the ticket number for the dock incident?", "expect": "b13" },
+    { "id": "q15", "question": "What should the manifest job do after three attempts?", "expect": "b9" },
+    { "id": "q16", "question": "Why is the dashboard query slow on the events table?", "expect": "c3" },
+    { "id": "q17", "question": "Which index fixed the dashboard query?", "expect": "c5" },
+    { "id": "q18", "question": "What did the composite index cost on the write path?", "expect": "c7" },
+    { "id": "q19", "question": "Which datasource regressed worst from the index change?", "expect": "c11" },
+    { "id": "q20", "question": "How am I going to batch the inserts?", "expect": "c13" },
+    { "id": "q21", "question": "Why has vacuum not run on the events table?", "expect": "c15" },
+    { "id": "q22", "question": "Which column order does the composite index use?", "expect": "c4" },
+
+    { "id": "u01", "question": "What time does the museum close?", "expect": null, "why": "The museum is mentioned, its hours are not." },
+    { "id": "u02", "question": "Which airline am I flying with?", "expect": null, "why": "Driving and ferry only; no flight exists." },
+    { "id": "u03", "question": "What caused the 05:00 ferry delay at Corran Quay?", "expect": null, "why": "Collides with b1 and b11 but nothing describes a delayed ferry." },
+    { "id": "u04", "question": "How much did the hotel upgrade cost?", "expect": null, "why": "The upgrade was declined, so no price exists." },
+    { "id": "u05", "question": "What is the replication lag on the events table?", "expect": null, "why": "Replication is never discussed." },
+    { "id": "u06", "question": "Who is the client contact at Harbour Freight?", "expect": null, "why": "No name is ever given." },
+    { "id": "u07", "question": "What did we decide about seasickness tablets?", "expect": null, "why": "Seasickness is mentioned, tablets are not." },
+    { "id": "u08", "question": "What is the PagerDuty escalation policy for lighthouse-dock?", "expect": null, "why": "The rename is mentioned, the policy is not." }
+  ]
+}

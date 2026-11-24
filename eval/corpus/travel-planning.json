@@ -1,0 +1,21 @@
+{
+  "id": "travel-planning",
+  "title": "A week in Vellmarrow",
+  "messages": [
+    { "id": "a1", "role": "user", "text": "Planning a week away in late March and I've settled on Vellmarrow, the coastal town my cousin keeps going on about." },
+    { "id": "a2", "role": "assistant", "text": "Vellmarrow in late March is quiet and wet but the light is good. Worth checking the ferry timetable early, because the coast road is closed for resurfacing until April." },
+    { "id": "a3", "role": "user", "text": "The ferry leaves Corran Quay at 6:40 and 11:20. I'm taking the 11:20 because the drive to the quay is nearly two hours and I'm not doing a 4:30 start on holiday." },
+    { "id": "a4", "role": "assistant", "text": "The 11:20 also means you cross in daylight, which matters if the swell is up. Book the return at the same time so you are not queueing at the ticket hut in the rain." },
+    { "id": "a5", "role": "user", "text": "Booked three nights at the Heron Inn, the one with the green door near the harbour wall. Their breakfast has a reputation and there are apparently two inns on that wall, so the door is how you tell them apart." },
+    { "id": "a6", "role": "assistant", "text": "Three nights with the green door noted. Ask for the room away from the wall side if you want quiet, since the fishing boats start about five." },
+    { "id": "a7", "role": "user", "text": "Day two I want to walk out to the lighthouse at Ardnamere and back before the light goes. Everyone says it's about four hours there and back." },
+    { "id": "a8", "role": "assistant", "text": "Four hours means starting by nine. The causeway path floods near high tide, so check the tide table the night before rather than the morning of." },
+    { "id": "a9", "role": "user", "text": "The train from the city was cancelled twice the last time I tried this trip, so I'm driving to the quay instead and leaving the car there for the week." },
+    { "id": "a10", "role": "assistant", "text": "Week-long parking at Corran Quay needs booking ahead, they fill the long-stay strip in summer. Two cancellations is reason enough to stop relying on that line." },
+    { "id": "a11", "role": "user", "text": "Budget is about nine hundred for the week, ferry and inn included. I'd rather spend the extra on one good dinner than on a hotel upgrade." },
+    { "id": "a12", "role": "assistant", "text": "Nine hundred is comfortable if the ferry and inn are already booked. One dinner at the place on the quay will take a chunk of the remainder, and it is the right way to spend it." },
+    { "id": "a13", "role": "user", "text": "One thing I do not want is another boat trip. The last one had me seasick for a full day, so the lighthouse walk on foot is the outing and nothing on the water." },
+    { "id": "a14", "role": "assistant", "text": "Understood, no boat trips beyond the crossing itself. Everything else can be walked, and Vellmarrow is small enough that walking is the sensible way round it anyway." },
+    { "id": "a15", "role": "user", "text": "If the weather turns I'll do the museum at the old customs house instead. They have the harbour charts going back to 1800 and it's free on a Wednesday." }
+  ]
+}
