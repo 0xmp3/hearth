@@ -48,11 +48,20 @@ export default function SpeechPanel({ onState, autoSpeak, onAutoSpeak, defaultVo
   const [test, setTest] = useState('Hearth can speak now, in a voice you gave it.')
   const fileInput = useRef<HTMLInputElement>(null)
 
+  // Same trap as RetrievalPanel: `onState` is an inline arrow from Settings, so
+  // depending on it in `refresh` made the mount effect re-run every render and
+  // poll `/api/tts` hundreds of times a second. A ref keeps the behaviour and
+  // gives the callback a stable identity.
+  const onStateRef = useRef(onState)
+  useEffect(() => {
+    onStateRef.current = onState
+  })
+
   const refresh = useCallback(async () => {
     try {
       const next = await manager.tts()
       setState(next)
-      onState?.(next)
+      onStateRef.current?.(next)
       setLang(next.lang)
       setNgl(String(next.ngl))
       return next
@@ -60,7 +69,7 @@ export default function SpeechPanel({ onState, autoSpeak, onAutoSpeak, defaultVo
       setError((err as Error).message)
       return null
     }
-  }, [onState])
+  }, [])
 
   useEffect(() => {
     void refresh()

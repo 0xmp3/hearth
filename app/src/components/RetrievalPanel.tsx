@@ -44,6 +44,16 @@ export default function RetrievalPanel({ onState }: Props) {
   const [confirmClear, setConfirmClear] = useState(false)
   const poll = useRef<number | null>(null)
 
+  // `onState` is an inline arrow from Settings, so it is a new function on every
+  // parent render. Depending on it made `refresh` new as well, so the effect
+  // below re-ran on every render its own fetch caused: measured 2,714 requests
+  // in three seconds with this dialog open. A ref keeps the call without making
+  // the identity change.
+  const onStateRef = useRef(onState)
+  useEffect(() => {
+    onStateRef.current = onState
+  })
+
   const refresh = useCallback(async () => {
     try {
       const [e, r, d] = await Promise.all([
@@ -60,13 +70,13 @@ export default function RetrievalPanel({ onState }: Props) {
       setRNgl(String(r.ngl))
       setCandidates(String(r.candidates))
       setError(null)
-      onState?.()
+      onStateRef.current?.()
       return d
     } catch (err) {
       setError((err as Error).message)
       return null
     }
-  }, [onState])
+  }, [])
 
   useEffect(() => {
     void refresh()
