@@ -95,23 +95,25 @@ export default function ModelPanel({ onChanged }: { onChanged?: () => void }) {
               <span className="character-name">{entry.name}</span>
               <span className="character-note">
                 {formatBytes(entry.size)} · {entry.note}
-                {entry.installed ? ' · on disk' : ''}
+                {entry.installed ? (entry.verified ? ' · verified' : ' · not verified') : ''}
               </span>
             </span>
             <button
               className="link"
-              disabled={busy || downloading || entry.installed}
+              disabled={busy || downloading || (entry.installed && entry.verified)}
               onClick={() => void start(entry.id)}
             >
-              {entry.installed ? 'downloaded' : 'download'}
+              {entry.installed ? (entry.verified ? 'downloaded' : 'verify') : 'download'}
             </button>
           </li>
         ))}
       </ul>
 
       <p className="hint">
-        Fetched from Hugging Face and checked against a pinned SHA-256 before it is used — an
-        unverified file is refused, not warned about. Saved to {state.dir}
+        These are starters, not the list of models you may use: point <strong>Models folder</strong> at
+        any folder of GGUF files and they load as they are. A starter is fetched from Hugging Face,
+        checked against a pinned SHA-256, and refused rather than merely warned about if the digest
+        does not match. Saved to {state.dir}
       </p>
 
       {error && <div className="error">{error}</div>}

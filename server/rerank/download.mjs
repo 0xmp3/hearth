@@ -13,13 +13,12 @@
 // reranks 10 candidates in ~350 ms on the CPU.
 
 import { existsSync } from 'node:fs'
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { downloadToFile } from '../net/download.mjs'
+import { markerMatches, readMarker, sha256File, writeMarker } from '../net/verify.mjs'
 import { rerankConfig, saveRerankConfig } from './index.mjs'
-
-const MARKER = '.installed.json'
 
 export const CATALOG = [
   {
@@ -93,15 +92,37 @@ export async function downloadReranker(dataDir, id) {
   try {
     await mkdir(dir, { recursive: true })
 
-    // Already here and the right size: adopt it rather than downloading 636 MB
-    // again. The digest was checked when it landed, and the marker says so.
+    // Already here at the right size — but a byte count is not evidence about
+    // the bytes, so the marker decides. No marker means hash it once; matching
+    // writes the marker, and a mismatch is refused with the file left in place.
     if (existsSync(dest)) {
       const s = await stat(dest)
       if (s.size === entry.size) {
-        progress.phase = 'done'
+        if (markerMatches(entry, await readMarker(dir))) {
+          progress.phase = 'done'
+          progress.file = entry.file
+          progress.got = s.size
+          progress.total = entry.size
+          selectIfUnset(dataDir, dest)
+          return { path: dest, bytes: s.size, adopted: true }
+        }
+
+        progress.phase = 'verifying'
         progress.file = entry.file
+        progress.got = 0
+        progress.total = s.size
+        const found = await sha256File(dest, (read) => {
+          progress.got = read
+        })
+        if (found !== entry.sha256) {
+          throw new Error(
+            `${entry.file} is not the file Hearth pins (expected ${entry.sha256}, found ${found}). ` +
+              'It was left in place — delete it, or download it again.',
+          )
+        }
+        await writeMarker(dir, entry, { verifiedBy: 'hash-on-adopt' })
+        progress.phase = 'done'
         progress.got = s.size
-        progress.total = entry.size
         selectIfUnset(dataDir, dest)
         return { path: dest, bytes: s.size, adopted: true }
       }
@@ -129,15 +150,7 @@ export async function downloadReranker(dataDir, id) {
     await rename(partial, dest)
     partial = null
 
-    await writeFile(
-      join(dir, MARKER),
-      JSON.stringify(
-        { id: entry.id, file: entry.file, sha256: entry.sha256, installedAt: new Date().toISOString() },
-        null,
-        2,
-      ) + '\n',
-      'utf8',
-    )
+    await writeMarker(dir, entry)
 
     selectIfUnset(dataDir, dest)
 
@@ -156,6 +169,7 @@ export async function downloadReranker(dataDir, id) {
 export async function describeDownloads(dataDir) {
   const dir = rerankerDir(dataDir)
   const entries = []
+  const marker = await readMarker(dir)
   for (const entry of CATALOG) {
     const path = join(dir, entry.file)
     let bytes = 0
@@ -170,6 +184,7 @@ export async function describeDownloads(dataDir) {
       path,
       size: entry.size,
       installed: bytes === entry.size,
+      verified: markerMatches(entry, marker),
       bytes,
     })
   }

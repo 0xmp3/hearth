@@ -296,7 +296,7 @@ export default function RetrievalPanel({ onState }: Props) {
                   <span className="character-name">{entry.name}</span>
                   <span className="character-note">
                     {megabytes(entry.size)} · {entry.note}
-                    {entry.installed ? ' · on disk' : ''}
+                    {entry.installed ? (entry.verified ? ' · verified' : ' · not verified') : ''}
                   </span>
                 </span>
                 <button
@@ -305,18 +305,22 @@ export default function RetrievalPanel({ onState }: Props) {
                   onClick={() =>
                     void act(
                       () =>
-                        entry.installed
+                        entry.installed && entry.verified
                           ? manager.saveRerank({ model: entry.path, enabled: true })
                           : manager.downloadReranker(entry.id),
-                      entry.installed ? 'that model could not be selected' : 'that download could not start',
+                      entry.installed && entry.verified
+                        ? 'that model could not be selected'
+                        : 'that download could not start',
                     )
                   }
                 >
-                  {entry.installed
+                  {entry.installed && entry.verified
                     ? rModel.replace(/\\/g, '/').endsWith(entry.file)
                       ? 'in use'
                       : 'use this'
-                    : 'download'}
+                    : entry.installed
+                      ? 'verify'
+                      : 'download'}
                 </button>
               </li>
             ))}

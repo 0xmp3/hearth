@@ -216,6 +216,8 @@ export type RerankDownloadEntry = {
   path: string
   size: number
   installed: boolean
+  /** A marker proves the bytes match the pinned digest (catalog entries only). */
+  verified: boolean
   bytes: number
 }
 
@@ -240,6 +242,8 @@ export type ModelDownloadEntry = {
   path: string
   size: number
   installed: boolean
+  /** A marker proves the bytes match the pinned digest (catalog entries only). */
+  verified: boolean
   bytes: number
 }
 

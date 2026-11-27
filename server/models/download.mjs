@@ -22,13 +22,12 @@
 // points the app at their own folder.
 
 import { existsSync } from 'node:fs'
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { downloadToFile } from '../net/download.mjs'
+import { markerMatches, readMarker, sha256File, writeMarker } from '../net/verify.mjs'
 import { readConfig, writeConfig } from '../engine/resolve.mjs'
-
-const MARKER = '.installed.json'
 
 export const CATALOG = [
   {
@@ -100,15 +99,41 @@ export async function downloadModel(dataDir, id) {
   try {
     await mkdir(dir, { recursive: true })
 
-    // Already here at the right size: adopt it rather than pulling 4.6 GB again.
-    // The digest was checked when it landed, and the marker says so.
+    // Already here at the right size. That is not the same as "the file we
+    // pinned": a byte count says nothing about the bytes, which is how a
+    // truncated copy passed as installed and got loaded. The marker beside the
+    // file is the evidence, and it exists only when a digest has matched.
     if (existsSync(dest)) {
       const s = await stat(dest)
       if (s.size === entry.size) {
-        progress.phase = 'done'
+        if (markerMatches(entry, await readMarker(dir))) {
+          progress.phase = 'done'
+          progress.file = entry.file
+          progress.got = s.size
+          progress.total = entry.size
+          selectIfUnset(dataDir, dir)
+          return { path: dest, bytes: s.size, adopted: true }
+        }
+
+        // No proof: hash it once (~10 s for 4.6 GB) rather than pull the whole
+        // file again. Matching writes the marker; a mismatch is refused and the
+        // file is left where it is, because it may be something the user wanted.
+        progress.phase = 'verifying'
         progress.file = entry.file
+        progress.got = 0
+        progress.total = s.size
+        const found = await sha256File(dest, (read) => {
+          progress.got = read
+        })
+        if (found !== entry.sha256) {
+          throw new Error(
+            `${entry.file} is not the file Hearth pins (expected ${entry.sha256}, found ${found}). ` +
+              'It was left in place — delete it, or download it again.',
+          )
+        }
+        await writeMarker(dir, entry, { verifiedBy: 'hash-on-adopt' })
+        progress.phase = 'done'
         progress.got = s.size
-        progress.total = entry.size
         selectIfUnset(dataDir, dir)
         return { path: dest, bytes: s.size, adopted: true }
       }
@@ -136,15 +161,7 @@ export async function downloadModel(dataDir, id) {
     await rename(partial, dest)
     partial = null
 
-    await writeFile(
-      join(dir, MARKER),
-      JSON.stringify(
-        { id: entry.id, file: entry.file, sha256: entry.sha256, installedAt: new Date().toISOString() },
-        null,
-        2,
-      ) + '\n',
-      'utf8',
-    )
+    await writeMarker(dir, entry)
 
     selectIfUnset(dataDir, dir)
 
@@ -163,6 +180,8 @@ export async function downloadModel(dataDir, id) {
 export async function describeDownloads(dataDir) {
   const dir = chatModelsDir(dataDir)
   const entries = []
+  // Read once: one marker per folder, matched per entry below.
+  const marker = await readMarker(dir)
   for (const entry of CATALOG) {
     const path = join(dir, entry.file)
     let bytes = 0
@@ -177,6 +196,8 @@ export async function describeDownloads(dataDir) {
       path,
       size: entry.size,
       installed: bytes === entry.size,
+      /** The marker's digest matched: the bytes on disk are the pinned bytes. */
+      verified: markerMatches(entry, marker),
       bytes,
     })
   }
