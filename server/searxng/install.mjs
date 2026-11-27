@@ -11,15 +11,21 @@
 //      shim goes into the venv's site-packages rather than into the source: a
 //      future upgrade replaces the source, and must not silently lose the fix.
 //
-// The install is pinned to a commit SHA. There is no checksum to verify against
-// (GitHub serves the tarball, not a signed artefact), so the integrity story is
-// HTTPS plus a pin, and the pin is visible in the settings the app writes.
+// The install is pinned twice: to a commit SHA, and to the sha256 of the tarball
+// GitHub generates for it. The commit says which tree; the digest says which
+// bytes, and is checked before anything is unpacked. Neither is a signature —
+// codeload is not a signed-artefact service — so what this proves is that the
+// archive arrived intact and is the one that was reviewed, not who produced it.
+// If GitHub ever re-generates the archive the digest changes and the install
+// refuses: re-pin deliberately, after reading the diff.
 
-import { createWriteStream, existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { mkdir, rm, readFile, writeFile, stat } from 'node:fs/promises'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
+
+import { downloadToFile } from '../net/download.mjs'
 
 const run = promisify(execFile)
 
@@ -28,6 +34,12 @@ export const SOURCE = {
   version: '2026.11.12',
   sha: 'de722ab1b',
   url: 'https://codeload.github.com/searxng/searxng/tar.gz/de722ab1b',
+  /**
+   * sha256 of the archive at `url`, measured 2026-11-28 (6,750,285 bytes).
+   * GitHub builds this file on demand, so a new pin is a deliberate act: fetch
+   * it, compare the tree against the commit, then replace this line.
+   */
+  sha256: '79597d341b5602f69815bfbf2f660e5641760d8458a436842e76707937cb3a73',
 }
 
 const PORT = Number(process.env.HEARTH_SEARXNG_PORT ?? 8888)
@@ -177,31 +189,6 @@ async function readMarker(dataDir) {
   }
 }
 
-async function download(url, dest, onBytes) {
-  const res = await fetch(url, { headers: { 'User-Agent': 'hearth' } })
-  if (!res.ok) throw new Error(`download answered ${res.status}`)
-  const total = Number(res.headers.get('content-length') ?? 0)
-  progress.total = total
-
-  await new Promise((resolve, reject) => {
-    const out = createWriteStream(dest)
-    const reader = res.body.getReader()
-    let got = 0
-    const pump = () =>
-      reader.read().then(({ done, value }) => {
-        if (done) {
-          out.end(() => resolve())
-          return
-        }
-        got += value.byteLength
-        progress.got = got
-        onBytes?.(got)
-        out.write(Buffer.from(value), (err) => (err ? reject(err) : pump()))
-      })
-    pump().catch(reject)
-  })
-}
-
 /** Write the settings SearXNG needs: JSON on, no limiter, bound to loopback. */
 async function writeSettings(dataDir, python) {
   const p = paths(dataDir)
@@ -298,18 +285,34 @@ export async function install(dataDir) {
     progress.step = `downloading SearXNG ${SOURCE.version}`
     push(`[searxng] source ${SOURCE.url}`)
     const tarball = join(p.root, 'source.tar.gz')
-    await download(SOURCE.url, tarball, (got) => {
-      progress.step = `downloading — ${Math.round(got / 1048576)} MB`
-    })
+    try {
+      // Through net/download.mjs: HTTP/1.1, hashing as it goes, so the digest
+      // and the bytes cannot disagree. The fetch path used to do this by hand
+      // and never hashed at all.
+      const actual = await downloadToFile(SOURCE.url, tarball, (got, total) => {
+        if (total) progress.total = total
+        progress.got = got
+        progress.step = `downloading — ${Math.round(got / 1048576)} MB`
+      })
+      if (actual !== SOURCE.sha256) {
+        throw new Error(
+          `the SearXNG archive does not match the pin (expected ${SOURCE.sha256}, got ${actual}). ` +
+            'Refusing to unpack it. If upstream re-generated the archive, re-pin deliberately.',
+        )
+      }
 
-    progress.phase = 'extracting'
-    progress.step = 'unpacking'
-    if (!existsSync(TAR)) throw new Error(`no tar to unpack with (looked for ${TAR})`)
-    const args = ['-xzf', tarball, '-C', p.app, '--strip-components=1']
-    for (const x of EXCLUDES) args.push(`--exclude=${x}`)
-    await run(TAR, args, { windowsHide: true })
-    await rm(tarball, { force: true })
-    if (!existsSync(join(p.app, 'requirements.txt'))) throw new Error('the archive did not contain requirements.txt')
+      progress.phase = 'extracting'
+      progress.step = 'unpacking'
+      if (!existsSync(TAR)) throw new Error(`no tar to unpack with (looked for ${TAR})`)
+      const args = ['-xzf', tarball, '-C', p.app, '--strip-components=1']
+      for (const x of EXCLUDES) args.push(`--exclude=${x}`)
+      await run(TAR, args, { windowsHide: true })
+      if (!existsSync(join(p.app, 'requirements.txt'))) throw new Error('the archive did not contain requirements.txt')
+    } finally {
+      // Whatever happened, the archive does not stay: a 6.7 MB file left behind
+      // is a stale artefact the next run would quietly reuse.
+      await rm(tarball, { force: true }).catch(() => {})
+    }
 
     progress.phase = 'venv'
     progress.step = `creating a virtualenv with Python ${python.version}`

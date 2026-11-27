@@ -60,8 +60,11 @@ chain on the component that spawns processes. Keep it that way.
   CORS headers, so a direct call is silently discarded.
 - **Downloads verify a digest and refuse on mismatch.** `server/net/download.mjs`
   streams over HTTP/1.1 and hashes as it goes; callers pin a sha256 (from the
-  release asset, Hugging Face's LFS oid, or a published checksum). An unverified
-  file is refused, not warned about — it is executed or loaded afterwards.
+  release asset, Hugging Face's LFS oid, or — for the SearXNG tarball GitHub
+  generates on demand — a digest measured once and re-pinned deliberately). An
+  unverified file is refused, not warned about — it is executed or loaded
+  afterwards. Adopting a file that is already on disk needs the same proof: a
+  marker from `server/net/verify.mjs`, never a matching byte count.
 - **Do not use `fetch` for large downloads.** undici negotiates HTTP/2 and leaves
   the flow-control window at 64 KB; measured 1.26 MB/s against 24.6 MB/s over
   HTTP/1.1 on the same file. A 4 MB buffer changes nothing.

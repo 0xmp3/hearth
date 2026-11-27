@@ -105,7 +105,7 @@ And a **clean Windows 11 Pro VM** (Ryzen 5, 6 cores, 8 GB RAM, no GPU) that star
 
 **Residual risks.** This app is not hardened, and the audit does not claim it is. What it does claim is that the risks are known and written down (`docs/security-audit.md`):
 
-- **The SearXNG tarball is not signed.** A git commit tarball has no signature to verify, so integrity is HTTPS plus a pinned commit. Accepted.
+- **The SearXNG tarball is not signed.** A git commit tarball has no signature to verify, so integrity is HTTPS, a pinned commit, and the sha256 of the archive GitHub generates for it — checked before anything is unpacked. That proves the bytes, not who built them.
 - **The engine digest comes from the same release as the binary.** It proves the file arrived intact, not who made it. Trust anchors on the GitHub account that published the release.
 - **DNS rebinding is open in the egress guard.** The hostname is checked, then the fetch happens; a name that answers public then private slips between the two. Proportionate for a local app whose egress you switched on, and documented in the module.
 - **CSP cannot govern WebRTC.** A preview page could open an `RTCPeerConnection` to a STUN server the model named and leak the local IP. No app data is in that frame.

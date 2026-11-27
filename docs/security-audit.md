@@ -396,7 +396,8 @@ These are the sentences the README has to be able to say out loud. None blocks
 publishing; all of them stop us claiming "secure".
 
 1. **The SearXNG tarball is not signed.** A git commit tarball has no signature to
-   verify, so integrity is HTTPS + a pinned SHA. Accepted.
+   verify, so integrity is HTTPS + a pinned commit + the sha256 of the archive that
+   commit produces, checked before unpacking. Accepted.
 2. **The engine checksum comes from the same release as the binary.** It proves the
    file arrived intact, not who made it. Trust anchors on the GitHub account of
    `lemonade-sdk` and on the sha we pin for ggml-org — plus, per F-1, on nothing at
