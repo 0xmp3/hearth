@@ -47,6 +47,34 @@ memory-safety or remote-code-execution bug. Two block "a stranger can run this
 safely" (F-1, F-2); F-4 needs a fix and a re-run of its suite before the preview
 panel can be called sandboxed-and-proved.
 
+Two things to read into that table. The verdicts describe the tree as audited
+(`4df63a8`) — every `file:line` in the findings points at that commit, not at
+HEAD — and the fixes land after the findings, tabulated under **Fixed in v1.44**
+at the end of this file. That is why a row can read FAIL and be closed today.
+
+### What was demonstrated, and what was argued
+
+The difference matters more than the count, so it is kept apart:
+
+- **The bug, reproduced.** F-2 (one request, one stack trace from the real
+  process) and F-4 (the attack suite at 34/37, then 41/41 after the fix).
+- **Probed against a live manager in a Windows 11 guest** — the session record
+  names F-2, F-3, F-6 and F-10 (21 checks), alongside the workspace suite (21/21)
+  and the preview suite (41/41) that cover rows 5 and 6, and the SearXNG
+  install → start → stop → remove lifecycle.
+- **Argued from the code.** F-1, F-5, F-7, F-8 and F-9 were established by
+  reading rather than by making the bug happen: demonstrating F-1 means serving a
+  build with no digest, F-5 means leaving a half-extracted executable in place.
+  Each has a fix, and each fix has a named check in the table at the end, but for
+  these five the record does not distinguish a check that was executed from one
+  that was reasoned. That is a gap in this report, not in the fixes. F-7 is the
+  clearest case: its lifecycle ran, and the pidfile-adoption path it is about was
+  explicitly not exercised (see Half B).
+
+The guest VM that ran the probes has been deleted. The outputs quoted in this file
+are the record; `scripts/guard-tests.mjs` and `scripts/preview-attack-tests.mjs`
+are in the tree and re-runnable on any machine.
+
 ---
 
 ## Findings
@@ -200,8 +228,8 @@ failing checks are the regression test; they should be green when this is done.
 - `isInstalled()` (`install.mjs:167-174`) returns true if the binary path exists.
   A kill during extraction leaves a truncated `llama-server.exe`, and
   `resolveEngine` (`resolve.mjs:66-67`) will treat it as installed and `start()`
-  will spawn it. PLAN's row says "nothing executable left on failure"; for the
-  *extract* failure that is not true.
+  will spawn it. The scope this row was audited against said "nothing executable
+  left on failure"; for the *extract* failure that is not true.
 
 **Fix.** `rm` the archive in a `finally`; write an install marker after a
 successful extract and have `isInstalled` require it. The SearXNG installer in
@@ -400,8 +428,8 @@ publishing; all of them stop us claiming "secure".
    commit produces, checked before unpacking. Accepted.
 2. **The engine checksum comes from the same release as the binary.** It proves the
    file arrived intact, not who made it. Trust anchors on the GitHub account of
-   `lemonade-sdk` and on the sha we pin for ggml-org — plus, per F-1, on nothing at
-   all for official builds until that is fixed.
+   `lemonade-sdk`, and on the per-asset digest GitHub publishes for ggml-org
+   releases.
 3. **DNS rebinding is not closed.** `guard.mjs` checks the hostname, then fetches;
    a name that answers public then private slips between the two. Documented in
    the module, proportionate for a local app whose egress the user switched on.
@@ -409,10 +437,16 @@ publishing; all of them stop us claiming "secure".
    to a STUN server the model named and leak the local IP. Data exfiltration over
    ICE is theoretically possible. Not attempted by the fixture; no app data is in
    the frame.
-5. **The preview page can be replaced by a remote page** (F-4) — a phishing
-   surface inside our chrome, not a data leak.
+5. **A preview page can still issue one navigation** (F-4, mitigated, not closed).
+   No CSP directive stops it, so the request goes out. The panel detects a
+   document that moved and replaces the frame with a notice, and a declared
+   `<meta http-equiv="refresh">` is stripped at assembly; a navigation answered
+   with no content never commits a document, so that case is silent and is
+   recorded rather than denied. What remains is a phishing surface inside our
+   chrome, not a data leak.
 6. **Loopback apps are reachable by any local page** that guesses the port. The
-   `X-Hearth` + exact-origin pair is the defence, and F-2 is the hole in it.
+   `X-Hearth` + exact-origin pair is the defence; F-2 was the hole in it, and that
+   hole is closed.
 
 ---
 
@@ -551,7 +585,7 @@ prevent), engine adoption + Settings **12/12**, `tsc`/`build`/`check:theme` clea
   No CSP directive governs it. What changed is that a page that commits a document
   is caught and replaced, the declarative form is stripped, and the silent case (a
   no-content answer) is written down rather than denied.
-- **Residual risks 1–4 below are untouched** — the SearXNG tarball has no signature,
+- **Residual risks 1–4 above are untouched** — the SearXNG tarball has no signature,
   the engine digest anchors on the releasing account, DNS rebinding is open, and
   CSP cannot govern WebRTC.
 - **No secondary item is outstanding.** The import path was re-verified on

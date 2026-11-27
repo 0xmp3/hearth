@@ -6,7 +6,7 @@ A local-first chat app over llama.cpp. Your machine, your models, your history �
 
 ![Hearth answering a prompt, then rendering the page it wrote beside the chat](docs/media/hearth-demo.gif)
 
-**The security audit is in the repo.** [docs/security-audit.md](docs/security-audit.md) — ten findings with `file:line`, the evidence that reproduced each one, the fix, and the residual risks this app does not claim to have closed. Two acceptance suites back it: 41 preview-sandbox attack checks and 21 path-guard checks, both run against a live manager in a VM.
+**The security audit is in the repo.** [docs/security-audit.md](docs/security-audit.md) — ten findings with `file:line`, the evidence for each one kept apart (what was reproduced, what was probed against a live manager, what was argued from the code), the fix, and the residual risks this app does not claim to have closed. Two acceptance suites back it: 41 preview-sandbox attack checks and 21 path-guard checks, both run against a live manager in a VM. Found something it does not cover? Report it from the Security tab rather than in a public issue.
 
 ## What it is
 
@@ -39,25 +39,25 @@ A mission that doesn't constrain decisions is decoration. These are the constrai
 
 **Memory that belongs to someone.** Facts are scoped to a character or to one conversation, never app-wide, so a roleplay cannot leak into a coding chat. The model proposes a fact and you keep or forget it; a background pass reads the transcript and captures what the model missed. The injected block says what it is, which is what stops the model re-saving its own facts in different words.
 
-**Retrieval over your own history.** Opt-in per conversation. Messages are chunked, embedded by a second `llama-server`, and searched with a cross-encoder reranker over the top candidates; the reply cites the conversations it used and a chip jumps to the message. Vectors are a cache in IndexedDB — a wipe costs a re-index, not a conversation.
+**Retrieval over your own history.** Opt-in per conversation. Messages are chunked, embedded by a second `llama-server`, and searched with a cross-encoder reranker over the top candidates; the reply cites the conversations it used and a chip jumps to the message. Vectors are a cache in IndexedDB — a wipe costs a re-index, not a conversation. `npm run eval` scores the retrieval against thirty committed questions: hit@1 81.8%, hit@3 86.4%, MRR 0.859 over the 22 answerable ones — with the per-miss audit and the labels in [eval/](eval/README.md), so the number can be argued with rather than taken.
 
 **A preview panel.** A reply containing a fenced `html` block renders beside the chat in a sandboxed frame (`allow-scripts`, never `allow-same-origin`, plus a CSP with `connect-src 'none'`). Two independent layers, and a 41-check attack suite proves each holds when the other is broken.
 
 ![A generated page rendered beside the chat](docs/media/preview-panel.png)
 
-**Speech.** Replies read aloud by Qwen3-TTS on the same llama.cpp build, cloned per request from a clip you keep in `data/voices`. Nothing leaves the machine.
+**Speech.** Replies read aloud by Qwen3-TTS on the same llama.cpp build, cloned per request from a clip you keep in `data/voices`. Bring your own: two GGUFs (a backbone and a codec) and a five-to-twenty-second recording — the panel says where they go, and nothing about speech is downloaded for you. Nothing leaves the machine.
 
-**Tools, and a page that says what they may do.** `remember`, `now`, `search_history`, `web_read`, `web_search`, and a read-only workspace folder (`list_files`, `search_files`, `read_file`). Every tool has a switch; a conversation can narrow the list and never widen it; the manager's workspace and network settings are a third gate underneath. A tool that is off is never offered to the model, so it cannot promise to use it.
+**Tools, and a page that says what they may do.** `remember`, `now`, `search_history`, `web_read`, `web_search`, and a read-only workspace folder (`list_files`, `search_files`, `read_file`). Seven of the eight have a switch; `now` reads a clock and grants nothing, so it rides along with whichever of them you allow. A conversation can narrow the list and never widen it; the manager's workspace and network settings are a third gate underneath. A tool that is off is never offered to the model, so it cannot promise to use it.
 
 ![Settings → Permissions](docs/media/permissions.png)
 
-**Five themes, including one that is not trying to be modern.** Themes are files: drop a `.json` into `data/themes/` and it appears in Settings.
+**Five built-in themes, including one that is not trying to be modern.** Themes you add are files: drop a `.json` into `data/themes/` and it appears in Settings.
 
 ![The same chat in Hearth 98](docs/media/hearth-98.png)
 
 **A library that survives the browser.** Conversations, messages, characters, profiles, prompts and memories live in `data/hearth.db` (SQLite, via `node:sqlite`), read through the manager. Clearing site data costs you the vector cache and nothing else. Export and import are whole-library or one chat.
 
-**Downloads that are checked.** The manager fetches llama.cpp for your GPU, a chat model, a reranker and SearXNG. Every one is verified against a pinned SHA-256 before it is used, and an unverified file is refused rather than warned about.
+**Downloads that are checked.** The manager fetches llama.cpp for your GPU, a chat model, a reranker and SearXNG. Every one is verified against a pinned SHA-256 before it is used, an unverified file is refused rather than warned about, and a file already on disk is not adopted on its byte count — the digest is checked before it counts as installed.
 
 ## Run it
 
@@ -72,6 +72,8 @@ npm start
 
 No git installed? Install it first (`winget install Git.Git`), or download the repository as a ZIP and extract it — `npm install && npm start` work the same either way.
 
+No Node? `winget install OpenJS.NodeJS.LTS` gets you 24 or newer, or take the installer from nodejs.org. `npm install` says which version you have if it is too old, rather than failing inside a stack trace.
+
 Then open **http://localhost:5173**.
 
 `npm start` brings up the manager (port 8090) and the app (port 5173) together, and Ctrl+C stops both — the manager stops `llama-server` through its own handle first, so nothing is orphaned. It runs the **vite dev server**, not a production build; there is no static server in the manager yet.
@@ -82,7 +84,7 @@ Then open **http://localhost:5173**.
 2. **Settings → Backend → Chat model** — one click, 4.6 GB, Gemma 4 E4B (Q4_0) from the llama.cpp project's own conversions, checked against the digest Hugging Face publishes for the file.
 3. **Start server**, then talk to it.
 
-**Already have a `llama-server`?** Point Settings → Backend → Endpoint at it and skip both downloads. The app uses whatever is listening; the manager is optional for chatting and required for reading your history.
+**Already have a `llama-server`?** Point Settings → Backend → Endpoint at it and skip both downloads. The manager still runs — it is the only process that talks to the model, which is what lets you swap a backend by changing a string — and a backend on another machine also needs **Backend on another machine** turned on, because the manager refuses a non-loopback address until you do.
 
 **Themes are files.** Drop a `.json` theme into `data/themes/` and it appears in Settings; *Export this theme* gives you a valid starting point.
 
@@ -90,9 +92,9 @@ Then open **http://localhost:5173**.
 
 ## Status
 
-**Alpha, 0.1.0.** Windows-only, single-user, no support. The `v1.x` tags in this repository are internal build history from before publication; the public line starts here.
+**Alpha, 0.1.0.** Windows-only, single-user, no support. The `v1.x` numbers in code comments and in `docs/security-audit.md` are internal build history from before publication; the public line starts at 0.1.0.
 
-**Verified on two machines.** The development machine — Windows 11, RX 9070 XT (16 GB), 64 GB RAM, Node 24 — where: the app builds and runs, a real model answers through the manager, the library survives a full site-data clear, retrieval returns the right message with a reranker, the preview panel renders and its attack suite passes 41/41, the workspace guard passes 21/21, and the engine, model and reranker downloads verify their digests. `npm test` runs 90 unit tests over the pure modules in under a second, and CI runs the same gate on every push.
+**Verified on two machines.** The development machine — Windows 11, RX 9070 XT (16 GB), 64 GB RAM, Node 24 — where: the app builds and runs, a real model answers through the manager, the library survives a full site-data clear, retrieval returns the right message with a reranker, the preview panel renders and its attack suite passes 41/41, the workspace guard passes 21/21, and the engine, model, reranker and SearXNG downloads verify their digests. `npm test` runs 97 unit tests over the pure modules in under a second, and CI runs the same gate on every push.
 
 And a **clean Windows 11 Pro VM** (Ryzen 5, 6 cores, 8 GB RAM, no GPU) that started with no git, no Node and no models: `winget` for git and Node, the tree extracted from a ZIP, `npm install`, `npm start`, the engine downloaded and its digest verified, the 4.6 GB model downloaded and **its digest checked against the pin**, the server started, and a real reply came back at 8.5 tok/s on CPU.
 
@@ -122,4 +124,5 @@ And a **clean Windows 11 Pro VM** (Ryzen 5, 6 cores, 8 GB RAM, no GPU) that star
 |---|---|
 | [AGENTS.md](AGENTS.md) | How to run it, the gate, and the conventions that matter if you change the code |
 | [docs/security-audit.md](docs/security-audit.md) | The audit: findings, evidence, fixes, and the residual risks listed above |
-| [docs/backend.md](docs/backend.md) | The exact HTTP contract, with verified sample responses |
+| [docs/backend.md](docs/backend.md) | The engine's HTTP contract — what Hearth writes against — with verified sample responses |
+| [eval/README.md](eval/README.md) | Retrieval scored against committed questions: the numbers, the intervals, and an audit of every miss |

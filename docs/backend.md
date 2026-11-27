@@ -1,6 +1,8 @@
 # Backend contract
 
-Everything below was captured live from a `llama-server.exe` ROCm build on 2026-11-11. This is the only API we write against.
+This file documents the **engine** — the `llama-server` Hearth writes against — not Hearth's own manager. The app never talks to the engine directly: it calls the manager's `/api/*`, which proxies, aborts and swaps backends (see `server/index.mjs` for the route table; the manager's routes are grouped one handler per subsystem, and there is no third party to keep in sync).
+
+Everything below was captured live from a `llama-server.exe` ROCm build on 2026-11-11. This is the only upstream API we write against.
 
 ## Launch
 
@@ -14,7 +16,7 @@ cd /path/to/llama.cpp
 `--jinja` enables the model's chat template. `-ngl 99` offloads everything to the GPU.
 While the model loads, requests return `503` with `{"error":{"message":"Loading model"}}` — the app should show "starting model…" and retry, not error out.
 
-Hearth's manager expects the backend on **8088** by default; any port works if you point Settings → Backend → Endpoint at it.
+Hearth's manager expects the backend on **8088** by default; any port works if you point Settings → Backend → Endpoint at it. The manager only proxies to a loopback address unless **Backend on another machine** is switched on, so a backend on a LAN address is refused with a message naming that switch.
 
 ## Router mode (model selection)
 
